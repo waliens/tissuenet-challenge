@@ -1,0 +1,128 @@
+{
+  "name": "FNAB-Thyroid-Segment",
+  "container-image": {
+    "image": "cytomineuliege/w_fnab-thyroid-segment",
+    "type": "singularity"
+  },
+  "schema-version": "cytomine-0.1",
+  "description": "A software for segmenting thyroid fnab images",
+  "command-line": "python wrapper.py CYTOMINE_HOST CYTOMINE_PUBLIC_KEY CYTOMINE_PRIVATE_KEY CYTOMINE_ID_PROJECT CYTOMINE_ID_SOFTWARE IJ_RADIUS IJ_THRESHOLD CYTOMINE_ID_IMAGE CYTOMINE_ZOOM_LEVEL CYTOMINE_TILE_SIZE CYTOMINE_TILE_OVERLAP N_JOBS BATCH_SIZE",
+  "inputs": [
+    {
+      "id": "cytomine_host",
+      "value-key": "@ID",
+      "command-line-flag": "--@id",
+      "name": "Cytomine host",
+      "description": "Cytomine server hostname",
+      "type": "String",
+      "optional": false,
+      "set-by-server": true
+    },
+    {
+      "id": "cytomine_public_key",
+      "value-key": "@ID",
+      "command-line-flag": "--@id",
+      "name": "Cytomine public key",
+      "description": "Cytomine public key",
+      "type": "String",
+      "optional": false,
+      "set-by-server": true
+    },
+    {
+      "id": "cytomine_private_key",
+      "value-key": "@ID",
+      "command-line-flag": "--@id",
+      "name": "Cytomine private key",
+      "description": "Cytomine private key",
+      "type": "String",
+      "optional": false,
+      "set-by-server": true
+    },
+    {
+      "id": "cytomine_id_project",
+      "value-key": "@ID",
+      "command-line-flag": "--@id",
+      "name": "Cytomine project id",
+      "description": "Cytomine project id",
+      "type": "String",
+      "optional": false,
+      "set-by-server": true
+    },
+    {
+      "id": "cytomine_id_software",
+      "value-key": "@ID",
+      "command-line-flag": "--@id",
+      "name": "Cytomine software id",
+      "description": "Cytomine software id",
+      "type": "String",
+      "optional": false,
+      "set-by-server": true
+    },
+    {
+      "id": "cytomine_id_image",
+      "value-key": "@ID",
+      "command-line-flag": "--@id",
+      "name": "Image identifier",
+      "description": "The identifier of the image to process",
+      "type": "Domain",
+      "uri": "/api/project/$currentProject$/imageinstance.json",
+      "uri-print-attribute": "instanceFilename",
+      "optional": false
+    },
+    {
+      "name": "Zoom level",
+      "description": "The zoom level to apply when fetching the tiles (0 for maximum resolution). If zoom_level > 0, tile size and overlap should be respectively set to 256 and 0 (IIP protocol).",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "default-value": 0,
+      "optional": true,
+      "id": "cytomine_zoom_level",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    },
+    {
+      "name": "Tile size",
+      "description": "The size of the square tiles in pixels. Each processed image will be splitted into a set of tiles that will be processed independently. If union is enabled, the polygons found on each tiles will be merged when necessary.",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "default-value": 512,
+      "optional": true,
+      "id": "cytomine_tile_size",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    },
+    {
+      "name": "Tile overlap",
+      "description": "The overlap between tiles to extract (suggested: equal to the pyxit window target dimensions)",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "default-value": 24,
+      "optional": true,
+      "id": "cytomine_tile_overlap",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    },
+    {
+      "default-value": 1,
+      "name": "Number of jobs",
+      "description": "Number of jobs for training",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "optional": true,
+      "id": "n_jobs",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    },
+    {
+      "default-value": 8,
+      "name": "Batch size",
+      "description": "Batch size",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "optional": true,
+      "id": "batch_size",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    }
+  ]
+}
