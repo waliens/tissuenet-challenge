@@ -79,7 +79,7 @@ class RemoteAnnotationTrainDataset(Dataset):
             if in_window.is_empty:
                 mask = np.zeros((height, width), dtype=np.uint8)
             else:
-                mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8)
+                mask = (1 - rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8)) * 255
 
             # transform
             mask = Image.fromarray(mask.astype(np.uint8))
@@ -167,7 +167,7 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     min_x, min_y, max_x, max_y = (int(v) for v in roi_poly.bounds)
     mask_dims = (int(max_x - min_x), int(max_y - min_y))
     translated_gt = [translate(wkt.loads(g.location).intersection(roi_poly), xoff=-min_x, yoff=-min_y) for g in ground_truth]
-    y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
+    y_true = 1 - rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
     y_pred = np.zeros(y_true.shape, dtype=np.double)
     y_acc = np.zeros(y_true.shape, dtype=np.int)
 

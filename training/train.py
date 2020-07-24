@@ -78,7 +78,6 @@ def main(argv):
         np.random.seed(42)
         dataset = RemoteAnnotationTrainDataset(
             train_collection,
-            in_trans=transforms.Lambda(torange0_1),
             seg_trans=segmentation_transform,
             working_path=args.working_path,
             cyto_argv=argv,
@@ -128,10 +127,7 @@ def main(argv):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
                         val_images[roi.image], roi, foregrounds, unet, device,
-                        in_trans=transforms.Compose([
-                            transforms.ToTensor(),
-                            transforms.Lambda(torange0_1)
-                        ]),
+                        in_trans=transforms.ToTensor(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
                         overlap=args.overlap,
@@ -147,7 +143,6 @@ def main(argv):
             print("> val_loss: {:1.5f}".format(np.mean(val_losses)))
             print("> roc_auc : {:1.5f}".format(np.mean(val_roc_auc)))
             print("------------------------------")
-
 
 
 if __name__ == "__main__":
