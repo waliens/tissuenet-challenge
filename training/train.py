@@ -1,5 +1,6 @@
 import os
 from argparse import ArgumentParser
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -32,6 +33,11 @@ def find_intersecting_annotations(roi, annotations):
     return found
 
 
+def worker_init(tid):
+    from PIL import ImageFile
+    ImageFile.LOAD_TRUNCATED_IMAGES = False
+
+
 def main(argv):
     """
 
@@ -57,6 +63,8 @@ def main(argv):
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("-w", "--working_path", dest="working_path",
+                            default=os.path.join(str(Path.home()), "tmp"))
+        parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         args, _ = parser.parse_known_args(argv)
 
@@ -88,7 +96,8 @@ def main(argv):
             dataset,
             shuffle=True,
             batch_size=args.batch_size,
-            num_workers=args.n_jobs
+            num_workers=args.n_jobs,
+            worker_init_fn=worker_init
         )
 
         # network
@@ -140,9 +149,14 @@ def main(argv):
 
             print("------------------------------")
             print("Epoch {}:".format(e))
-            print("> val_loss: {:1.5f}".format(np.mean(val_losses)))
-            print("> roc_auc : {:1.5f}".format(np.mean(val_roc_auc)))
+            val_loss = np.mean(val_losses)
+            roc_auc = np.mean(val_roc_auc)
+            print("> val_loss: {:1.5f}".format(val_loss))
+            print("> roc_auc : {:1.5f}".format(roc_auc))
             print("------------------------------")
+
+            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc)
+            torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from shapely.affinity import translate, affine_transform
 from shapely.geometry import box
 from sldc import TileTopology
 from sldc.image import FixedSizeTileTopology
-from sldc_cytomine import CytomineTileBuilder, CytomineSlide
+from sldc_cytomine import CytomineTileBuilder
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
@@ -43,14 +43,14 @@ class RemoteAnnotationTrainDataset(Dataset):
         self._check_cytomine_connected()
         with self._cytomine:
             annotation = self._collection[item]
-            image = self._get_image_from_cache(annotation.image)
+            wsi = self._get_image_from_cache(annotation.image)
             width, height = self._width, self._height
 
-            if image.height < height or image.width < width:
-                raise ValueError("cannot extract patch, original image is too small")
+            if wsi.height < height or wsi.width < width:
+                raise ValueError("cannot extract patch, original wsi is too small")
 
             polygon = wkt.loads(annotation.location)
-            polygon = affine_transform(polygon, [1, 0, 0, -1, 0, image.height])
+            polygon = affine_transform(polygon, [1, 0, 0, -1, 0, wsi.height])
 
             x_min, y_min, x_max, y_max = polygon.bounds
             crop_width, crop_height = x_max - x_min, y_max - y_min
@@ -66,12 +66,22 @@ class RemoteAnnotationTrainDataset(Dataset):
                 y = np.random.randint(y_min, y_max - height)
 
             # annotation on image border
-            x = int(min(x, image.width - width))
-            y = int(min(y, image.height - height))
+            x = int(min(x, wsi.width - width))
+            y = int(min(y, wsi.height - height))
 
-            dest_path = os.path.join(self._working_path, "{}-{}-{}-{}-{}.png").format(image.id, x, y, width, height)
-            if not image.window(x, y, width, height, dest_pattern=dest_path, override=False):
-                raise ValueError("could not download the window")
+            success = False
+            attempt = 0
+            dest_path = os.path.join(self._working_path, "{}-{}-{}-{}-{}.png").format(wsi.id, x, y, width, height)
+            while not success:
+                try:
+                    Image.open(dest_path)
+                    success = True
+                except OSError:
+                    if attempt > 5:
+                        raise ValueError("More than 5 attempts to download a window, stop here.")
+                    attempt += 1
+                    if not wsi.window(x, y, width, height, dest_pattern=dest_path, override=True):
+                        raise ValueError("could not download the window")
 
             # rasterize polygon
             translated = translate(polygon, xoff=-x, yoff=-y)
@@ -79,7 +89,7 @@ class RemoteAnnotationTrainDataset(Dataset):
             if in_window.is_empty:
                 mask = np.zeros((height, width), dtype=np.uint8)
             else:
-                mask = (1 - rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8)) * 255
+                mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8) * 255
 
             # transform
             mask = Image.fromarray(mask.astype(np.uint8))
@@ -136,9 +146,9 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     Parameters
     ----------
     image: sldc.Image
-    roi: Polygon
+    roi: Annotation
         The polygon representing the roi to process
-    ground_truth: iterable of Polygon
+    ground_truth: iterable of Annotation
         The ground truth annotations
     model: nn.Module
         Segmentation network. Takes a batch of images as input and outputs the foreground probability for all pixels
@@ -163,11 +173,13 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     -------
     """
     # build ground truth
-    roi_poly = wkt.loads(roi.location)
+    affine_matrix = [1, 0, 0, -1, 0, image.height]
+    roi_poly = affine_transform(wkt.loads(roi.location), affine_matrix)
+    ground_truth = [affine_transform(wkt.loads(g.location), affine_matrix) for g in ground_truth]
     min_x, min_y, max_x, max_y = (int(v) for v in roi_poly.bounds)
     mask_dims = (int(max_x - min_x), int(max_y - min_y))
-    translated_gt = [translate(wkt.loads(g.location).intersection(roi_poly), xoff=-min_x, yoff=-min_y) for g in ground_truth]
-    y_true = 1 - rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
+    translated_gt = [translate(g.intersection(roi_poly), xoff=-min_x, yoff=-min_y) for g in ground_truth]
+    y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
     y_pred = np.zeros(y_true.shape, dtype=np.double)
     y_acc = np.zeros(y_true.shape, dtype=np.int)
 
@@ -193,6 +205,12 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
 
     # average multiple predictions
     y_pred /= y_acc
+
+    # import cv2
+    # from datetime import datetime
+    # roi.dump("{}_image.png".format(roi.id), override=False)
+    # cv2.imwrite("{}_true.png".format(roi.id), y_true * 255)
+    # cv2.imwrite("{}_pred_{}.png".format(roi.id, datetime.now().timestamp()), (y_pred * 255).astype(np.uint8))
     return y_pred, y_true
 
 
