@@ -3,20 +3,27 @@ from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
 
-import torch
+import joblib
 import numpy as np
+import torch
+
+
+from clustertools import Computation
+from clustertools.storage import PickleStorage
 from cytomine import Cytomine
-from cytomine.models import AnnotationCollection
+from cytomine.models import AnnotationCollection, ImageInstance
+from joblib import delayed
 from shapely import wkt
 from sklearn import metrics
+from sldc import batch_split
 from sldc_cytomine import CytomineSlide
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 
-from training.dataset import RemoteAnnotationTrainDataset, segmentation_transform, predict_roi
-from training.unet import Unet
+from dataset import RemoteAnnotationTrainDataset, segmentation_transform, predict_roi
+from unet import Unet
 
 
 def torange0_1(t):
@@ -36,6 +43,25 @@ def find_intersecting_annotations(roi, annotations):
 def worker_init(tid):
     from PIL import ImageFile
     ImageFile.LOAD_TRUNCATED_IMAGES = False
+
+
+def _parallel_download_wsi(identifiers, path, argv):
+    with Cytomine.connect_from_cli(argv):
+        instances = list()
+        for _id in identifiers:
+            instance = ImageInstance().fetch(_id)
+            filepath = os.path.join(path, instance.originalFilename)
+            print("Download", filepath)
+            instance.download(dest_pattern=filepath, override=False)
+            instance.download_path = filepath
+            instances.append(instance)
+        return instances
+
+
+def download_wsi(path, identifiers, argv, n_jobs=1):
+    batches = batch_split(n_jobs, identifiers)
+    results = joblib.Parallel(n_jobs)(delayed(_parallel_download_wsi)(batch, path, argv) for batch in batches)
+    return [i for b in results for i in b]
 
 
 def main(argv):
@@ -62,33 +88,46 @@ def main(argv):
         parser.add_argument("-t", "--tile_size", dest="tile_size", default=256, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
-        parser.add_argument("-w", "--working_path", dest="working_path",
+        parser.add_argument("--data_path", "--dpath", dest="data_path",
+                            default=os.path.join(str(Path.home()), "tmp"))
+        parser.add_argument("-w", "--working_path", "--wpath", dest="working_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         args, _ = parser.parse_known_args(argv)
 
+        os.makedirs(args.save_path, exist_ok=True)
+        os.makedirs(args.data_path, exist_ok=True)
         os.makedirs(args.working_path, exist_ok=True)
 
         # fetch annotations (filter val/test sets + other annotations)
         all_annotations = AnnotationCollection(project=77150529, showWKT=True, showMeta=True, showTerm=True).fetch()
+        val_ids = {77150767, 77150761, 77150809}
+        test_ids = {77150623, 77150611, 77150755}
+        val_test_ids = val_ids.union(test_ids)
         train_collection = all_annotations.filter(lambda a: (a.user in {55502856} and len(a.term) > 0
                                                              and a.term[0] in {35777351, 35777321, 35777459}
-                                                             and a.image not in {77150767, 77150761, 77150809, 77150623, 77150611, 77150755}))
+                                                             and a.image not in val_test_ids))
         val_rois = all_annotations.filter(lambda a: (a.user in {142954314}
-                                                     and a.image in {77150767, 77150761, 77150809}
+                                                     and a.image in val_ids
                                                      and len(a.term) > 0 and a.term[0] in {154890363}))
         val_foreground = all_annotations.filter(lambda a: (a.user in {142954314}
-                                                           and a.image in {77150767, 77150761, 77150809}
+                                                           and a.image in val_ids
                                                            and len(a.term) > 0 and a.term[0] in {154005477}))
 
-        val_images = {_id: CytomineSlide(_id) for _id in {r.image for r in val_rois}}
+        train_wsi_ids = list({an.image for an in all_annotations}.difference(val_test_ids))
+        val_wsi_ids = list(val_ids)
+
+        download_path = os.path.join(args.data_path, "wsi")
+        train_images = {image.id: image for image in download_wsi(download_path, train_wsi_ids, argv, args.n_jobs)}
+        val_images = {image.id: image for image in download_wsi(download_path, val_ids, argv, args.n_jobs)}
+
         np.random.seed(42)
         dataset = RemoteAnnotationTrainDataset(
             train_collection,
+            images=train_images,
             seg_trans=segmentation_transform,
             working_path=args.working_path,
-            cyto_argv=argv,
             width=args.tile_size,
             height=args.tile_size
         )
@@ -109,6 +148,13 @@ def main(argv):
         optimizer = Adam(unet.parameters(), lr=args.lr)
         loss_fn = BCEWithLogitsLoss(reduction="mean")
 
+        results = {
+            "train_losses": [],
+            "val_losses": [],
+            "val_metrics": [],
+            "save_path": []
+        }
+
         for e in range(args.epochs):
             print("########################")
             print("        Epoch {}".format(e))
@@ -126,6 +172,7 @@ def main(argv):
                 epoch_losses = [loss.detach().cpu().item()] + epoch_losses[:5]
                 print("{} - {:1.5f}".format(i, np.mean(epoch_losses)))
                 sys.stdout.flush()
+                results["train_losses"].append(epoch_losses[0])
 
             unet.eval()
             # validation
@@ -157,6 +204,45 @@ def main(argv):
 
             filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc)
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
+
+            results["val_losses"].append(val_loss)
+            results["val_metrics"].append(roc_auc)
+            results["save_path"].append(filename)
+
+        return results
+
+
+class TrainComputation(Computation):
+    def __init__(self, exp_name, comp_name, host=None, private_key=None, public_key=None, n_jobs=1, device="cuda:0",
+                 save_path=None, data_path=None, context="n/a", storage_factory=PickleStorage, **kwargs):
+        super().__init__(exp_name, comp_name, context=context, storage_factory=storage_factory)
+        self._n_jobs = n_jobs
+        self._device = device
+        self._save_path = save_path
+        self._cytomine_private_key = private_key
+        self._cytomine_public_key = public_key
+        self._cytomine_host = host
+        self._data_path = data_path
+
+    def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16):
+        # import os
+        # os.environ['MKL_THREADING_LAYER'] = 'GNU'
+        argv = ["--host", str(self._cytomine_host),
+                "--public_key", str(self._cytomine_public_key),
+                "--private_key", str(self._cytomine_private_key),
+                "--batch_size", str(batch_size),
+                "--n_jobs", str(self._n_jobs),
+                "--epochs", str(epochs),
+                "--device", str(self._device),
+                "--overlap", str(overlap),
+                "--tile_size", str(tile_size),
+                "--lr", str(lr),
+                "--init_fmaps", str(init_fmaps),
+                "--data_path", str(self._data_path),
+                "--working_path", os.path.join(os.environ["SCRATCH"], os.environ["SLURM_JOB_ID"]),
+                "--save_path", str(self._save_path)]
+        for k, v in main(argv).items():
+            results[k] = v
 
 
 if __name__ == "__main__":

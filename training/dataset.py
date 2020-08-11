@@ -11,7 +11,7 @@ from shapely.affinity import translate, affine_transform
 from shapely.geometry import box
 from sldc import TileTopology
 from sldc.image import FixedSizeTileTopology
-from sldc_cytomine import CytomineTileBuilder
+from sldc_openslide import OpenSlideTileBuilder, OpenSlideImage, OpenSlideTile
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
@@ -28,93 +28,63 @@ def segmentation_transform(*images):
 
 
 class RemoteAnnotationTrainDataset(Dataset):
-    def __init__(self, collection, working_path, in_trans=None, seg_trans=None, width=256, height=256, cyto_argv=None):
+    def __init__(self, collection, images, working_path, in_trans=None, seg_trans=None, width=256, height=256):
         self._collection = collection
         self._working_path = working_path
         self._width = width
         self._height = height
-        self._image_cache = {}
+        self._images = images
         self._seg_trans = seg_trans
         self._in_trans = in_trans
-        self._cyto_argv = cyto_argv if cyto_argv is not None else []
-        self._cytomine = None
 
     def __getitem__(self, item):
-        self._check_cytomine_connected()
-        with self._cytomine:
-            annotation = self._collection[item]
-            wsi = self._get_image_from_cache(annotation.image)
-            width, height = self._width, self._height
+        annotation = self._collection[item]
+        wsi = OpenSlideImage(self._images[annotation.image].download_path)
+        width, height = self._width, self._height
 
-            if wsi.height < height or wsi.width < width:
-                raise ValueError("cannot extract patch, original wsi is too small")
+        if wsi.height < height or wsi.width < width:
+            raise ValueError("cannot extract patch, original wsi is too small")
 
-            polygon = wkt.loads(annotation.location)
-            polygon = affine_transform(polygon, [1, 0, 0, -1, 0, wsi.height])
+        polygon = wkt.loads(annotation.location)
+        polygon = affine_transform(polygon, [1, 0, 0, -1, 0, wsi.height])
 
-            x_min, y_min, x_max, y_max = polygon.bounds
-            crop_width, crop_height = x_max - x_min, y_max - y_min
+        x_min, y_min, x_max, y_max = polygon.bounds
+        crop_width, crop_height = x_max - x_min, y_max - y_min
 
-            if crop_width <= width:
-                x = x_min + (crop_width - width) / 2
-            else:
-                x = np.random.randint(x_min, x_max - width)
+        if crop_width <= width:
+            x = x_min + (crop_width - width) / 2
+        else:
+            x = np.random.randint(x_min, x_max - width)
 
-            if crop_height <= height:
-                y = y_min + (crop_height - height) / 2
-            else:
-                y = np.random.randint(y_min, y_max - height)
+        if crop_height <= height:
+            y = y_min + (crop_height - height) / 2
+        else:
+            y = np.random.randint(y_min, y_max - height)
 
-            # annotation on image border
-            x = int(min(x, wsi.width - width))
-            y = int(min(y, wsi.height - height))
+        # annotation on image border
+        x = int(min(x, wsi.width - width))
+        y = int(min(y, wsi.height - height))
 
-            success = False
-            attempt = 0
-            dest_path = os.path.join(self._working_path, "{}-{}-{}-{}-{}.png").format(wsi.id, x, y, width, height)
-            while not success:
-                try:
-                    Image.open(dest_path)
-                    success = True
-                except OSError:
-                    if attempt > 5:
-                        raise ValueError("More than 5 attempts to download a window, stop here.")
-                    attempt += 1
-                    if not wsi.window(x, y, width, height, dest_pattern=dest_path, override=True):
-                        raise ValueError("could not download the window")
+        # rasterize polygon
+        translated = translate(polygon, xoff=-x, yoff=-y)
+        in_window = box(0, 0, width, height).intersection(translated)
+        if in_window.is_empty:
+            mask = np.zeros((height, width), dtype=np.uint8)
+        else:
+            mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8) * 255
 
-            # rasterize polygon
-            translated = translate(polygon, xoff=-x, yoff=-y)
-            in_window = box(0, 0, width, height).intersection(translated)
-            if in_window.is_empty:
-                mask = np.zeros((height, width), dtype=np.uint8)
-            else:
-                mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8) * 255
+        # transform
+        mask = Image.fromarray(mask.astype(np.uint8))
+        image = Image.fromarray(wsi.window((x, y), width, height).np_image)
+        if self._seg_trans is not None:
+            image, mask = self._seg_trans(image, mask)
+        if self._in_trans is not None:
+            image = self._in_trans(image)
 
-            # transform
-            mask = Image.fromarray(mask.astype(np.uint8))
-            image = Image.open(dest_path)
-            if self._seg_trans is not None:
-                image, mask = self._seg_trans(image, mask)
-            if self._in_trans is not None:
-                image = self._in_trans(image)
-
-            return image, mask
-
-    def _get_image_from_cache(self, image_id):
-        if image_id not in self._image_cache:
-            self._image_cache[image_id] = ImageInstance().fetch(image_id)
-        return self._image_cache[image_id]
+        return image, mask
 
     def __len__(self):
         return len(self._collection)
-
-    def _check_cytomine_connected(self):
-        try:
-            self._cytomine = Cytomine.get_instance()
-        except ConnectionError:
-            self._cytomine = Cytomine.connect_from_cli(self._cyto_argv)
-        self._cytomine.logger.setLevel(logging.CRITICAL)
 
 
 class TileTopologyDataset(Dataset):
@@ -151,11 +121,11 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     ground_truth: iterable of Annotation
         The ground truth annotations
     model: nn.Module
-        Segmentation network. Takes a batch of images as input and outputs the foreground probability for all pixels
+        Segmentation network. Takes a batch of _images as input and outputs the foreground probability for all pixels
     device:
         A torch device to transfer data to
     in_trans: transforms.Transform
-        A transform to apply before forwarding images into the network
+        A transform to apply before forwarding _images into the network
     batch_size: int
         Batch size
     tile_size: int
@@ -165,7 +135,7 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     n_jobs: int
         Number of jobs available
     working_path: str
-        Working path (temporary folder for storing downloaded images)
+        Working path (temporary folder for storing downloaded _images)
     cyto_argv: list
         Argv for init cytomine client on worker thread
 
@@ -184,8 +154,9 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     y_acc = np.zeros(y_true.shape, dtype=np.int)
 
     # topology
-    builder = CytomineTileBuilder(working_path)
-    window = image.window((min_x, min_y), mask_dims[0], mask_dims[1])
+    builder = OpenSlideTileBuilder()
+    slide = OpenSlideImage(image.download_path)
+    window = slide.window((min_x, min_y), mask_dims[0], mask_dims[1])
     base_topology = TileTopology(window, builder, max_width=tile_size, max_height=tile_size, overlap=overlap)
     tile_topology = FixedSizeTileTopology(base_topology)
 
