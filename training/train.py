@@ -22,7 +22,7 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 
-from dataset import RemoteAnnotationTrainDataset, segmentation_transform, predict_roi
+from dataset import RemoteAnnotationTrainDataset, segmentation_transform, predict_roi, AnnotationCrop
 from unet import Unet
 
 
@@ -118,19 +118,20 @@ def main(argv):
         train_wsi_ids = list({an.image for an in all_annotations}.difference(val_test_ids))
         val_wsi_ids = list(val_ids)
 
-        download_path = os.path.join(args.data_path, "wsi")
-        train_images = {image.id: image for image in download_wsi(download_path, train_wsi_ids, argv, args.n_jobs)}
-        val_images = {image.id: image for image in download_wsi(download_path, val_ids, argv, args.n_jobs)}
+        download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
+        train_images = {_id: ImageInstance().fetch(_id) for _id in train_wsi_ids}
+        val_wsis = {_id: CytomineSlide(_id) for _id in val_wsi_ids}
+
+        train_crops = [
+            AnnotationCrop(train_images[annot.image], annot, download_path, args.tile_size)
+            for annot in train_collection
+        ]
+
+        for crop in train_crops:
+            crop.download()
 
         np.random.seed(42)
-        dataset = RemoteAnnotationTrainDataset(
-            train_collection,
-            images=train_images,
-            seg_trans=segmentation_transform,
-            working_path=args.working_path,
-            width=args.tile_size,
-            height=args.tile_size
-        )
+        dataset = RemoteAnnotationTrainDataset(train_crops, seg_trans=segmentation_transform)
         loader = DataLoader(
             dataset,
             shuffle=True,
@@ -171,7 +172,6 @@ def main(argv):
                 optimizer.step()
                 epoch_losses = [loss.detach().cpu().item()] + epoch_losses[:5]
                 print("{} - {:1.5f}".format(i, np.mean(epoch_losses)))
-                sys.stdout.flush()
                 results["train_losses"].append(epoch_losses[0])
 
             unet.eval()
@@ -182,7 +182,7 @@ def main(argv):
                 foregrounds = find_intersecting_annotations(roi, val_foreground)
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        val_images[roi.image], roi, foregrounds, unet, device,
+                        val_wsis[roi.image], roi, foregrounds, unet, device,
                         in_trans=transforms.ToTensor(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,

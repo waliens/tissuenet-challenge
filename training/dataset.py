@@ -11,7 +11,7 @@ from shapely.affinity import translate, affine_transform
 from shapely.geometry import box
 from sldc import TileTopology
 from sldc.image import FixedSizeTileTopology
-from sldc_openslide import OpenSlideTileBuilder, OpenSlideImage, OpenSlideTile
+from sldc_cytomine import CytomineTileBuilder
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
@@ -27,55 +27,84 @@ def segmentation_transform(*images):
     return images
 
 
-class RemoteAnnotationTrainDataset(Dataset):
-    def __init__(self, collection, images, working_path, in_trans=None, seg_trans=None, width=256, height=256):
-        self._collection = collection
+class AnnotationCrop(object):
+    def __init__(self, wsi, annotation, working_path, tile_size=512):
+        self._annotation = annotation
+        self._tile_size = tile_size
+        self._wsi = wsi
         self._working_path = working_path
-        self._width = width
-        self._height = height
-        self._images = images
+
+    def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
+        start = crop_start
+        size = crop_size
+        if crop_size < self._tile_size:
+            start = crop_start + (crop_size - self._tile_size) // 2
+            size = self._tile_size
+        start = min(start, wsi_size - size)
+        return start, size
+
+    def _extract_image_box(self):
+        crop_width, crop_height = self._crop_dims()
+        crop_x_min, crop_y_min, crop_x_max, crop_y_max = self._crop_bounds()
+        image_x_min, image_width = self._get_start_and_size_over_dimension(crop_x_min, crop_width, self._wsi.width)
+        image_y_min, image_height = self._get_start_and_size_over_dimension(crop_y_min, crop_height, self._wsi.height)
+        return (image_x_min, image_y_min), image_width, image_height
+
+    def _get_image_filepath(self):
+        (x, y), width, height = self._extract_image_box()
+        return os.path.join(self._working_path, "{}-{}-{}-{}-{}.png").format(self._wsi.id, x, y, width, height)
+
+    def _download_image(self):
+        (x, y), width, height = self._extract_image_box()
+        filepath = self._get_image_filepath()
+        if not self._wsi.window(x, y, width, height, dest_pattern=filepath, override=False):
+            raise ValueError("could not download the window '{}'".format(filepath))
+        return filepath
+
+    def download(self):
+        print("download '{}'".format(self._get_image_filepath()))
+        return self._download_image()
+
+    def _polygon(self):
+        polygon = wkt.loads(self._annotation.location)
+        return affine_transform(polygon, [1, 0, 0, -1, 0, self._wsi.height])
+
+    def _crop_bounds(self):
+        return [int(v) for v in self._polygon().bounds]
+
+    def _crop_dims(self):
+        x_min, y_min, x_max, y_max = self._crop_bounds()
+        return x_max - x_min, y_max - y_min
+
+    def random_crop_and_mask(self):
+        """in image coordinate system"""
+        (x_min, y_min), width, height = self._extract_image_box()
+        x = np.random.randint(0, width - self._tile_size + 1)
+        y = np.random.randint(0, height - self._tile_size + 1)
+
+        image = Image.open(self._get_image_filepath())
+        crop = image.crop([x, y, x + self._tile_size, y + self._tile_size])
+
+        translated = translate(self._polygon(), xoff=-(x_min + x), yoff=-(y_min + y))
+        in_window = box(0, 0, self._tile_size, self._tile_size).intersection(translated)
+        if in_window.is_empty:
+            mask = np.zeros((self._tile_size, self._tile_size), dtype=np.uint8)
+        else:
+            mask = rasterize([in_window], out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
+
+        return crop, Image.fromarray(mask.astype(np.uint8))
+
+
+class RemoteAnnotationTrainDataset(Dataset):
+    def __init__(self, crops, in_trans=None, seg_trans=None):
+        self._crops = crops
         self._seg_trans = seg_trans
         self._in_trans = in_trans
 
     def __getitem__(self, item):
-        annotation = self._collection[item]
-        wsi = OpenSlideImage(self._images[annotation.image].download_path)
-        width, height = self._width, self._height
+        annotation_crop = self._crops[item]
+        image, mask = annotation_crop.random_crop_and_mask()
 
-        if wsi.height < height or wsi.width < width:
-            raise ValueError("cannot extract patch, original wsi is too small")
-
-        polygon = wkt.loads(annotation.location)
-        polygon = affine_transform(polygon, [1, 0, 0, -1, 0, wsi.height])
-
-        x_min, y_min, x_max, y_max = polygon.bounds
-        crop_width, crop_height = x_max - x_min, y_max - y_min
-
-        if crop_width <= width:
-            x = x_min + (crop_width - width) / 2
-        else:
-            x = np.random.randint(x_min, x_max - width)
-
-        if crop_height <= height:
-            y = y_min + (crop_height - height) / 2
-        else:
-            y = np.random.randint(y_min, y_max - height)
-
-        # annotation on image border
-        x = int(min(x, wsi.width - width))
-        y = int(min(y, wsi.height - height))
-
-        # rasterize polygon
-        translated = translate(polygon, xoff=-x, yoff=-y)
-        in_window = box(0, 0, width, height).intersection(translated)
-        if in_window.is_empty:
-            mask = np.zeros((height, width), dtype=np.uint8)
-        else:
-            mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8) * 255
-
-        # transform
-        mask = Image.fromarray(mask.astype(np.uint8))
-        image = Image.fromarray(wsi.window((x, y), width, height).np_image)
         if self._seg_trans is not None:
             image, mask = self._seg_trans(image, mask)
         if self._in_trans is not None:
@@ -84,7 +113,7 @@ class RemoteAnnotationTrainDataset(Dataset):
         return image, mask
 
     def __len__(self):
-        return len(self._collection)
+        return len(self._crops)
 
 
 class TileTopologyDataset(Dataset):
@@ -154,9 +183,8 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     y_acc = np.zeros(y_true.shape, dtype=np.int)
 
     # topology
-    builder = OpenSlideTileBuilder()
-    slide = OpenSlideImage(image.download_path)
-    window = slide.window((min_x, min_y), mask_dims[0], mask_dims[1])
+    builder = CytomineTileBuilder(working_path)
+    window = image.window((min_x, min_y), mask_dims[0], mask_dims[1])
     base_topology = TileTopology(window, builder, max_width=tile_size, max_height=tile_size, overlap=overlap)
     tile_topology = FixedSizeTileTopology(base_topology)
 
