@@ -119,15 +119,18 @@ def main(argv):
         val_wsi_ids = list(val_ids)
 
         download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
-        train_images = {_id: ImageInstance().fetch(_id) for _id in train_wsi_ids}
-        val_wsis = {_id: CytomineSlide(_id) for _id in val_wsi_ids}
+        images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
 
         train_crops = [
-            AnnotationCrop(train_images[annot.image], annot, download_path, args.tile_size)
+            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size)
             for annot in train_collection
         ]
+        val_crops = [
+            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size)
+            for annot in val_rois
+        ]
 
-        for crop in train_crops:
+        for crop in train_crops + val_crops:
             crop.download()
 
         np.random.seed(42)
@@ -178,18 +181,16 @@ def main(argv):
             # validation
             val_losses = np.zeros(len(val_rois), dtype=np.float)
             val_roc_auc = np.zeros(len(val_rois), dtype=np.float)
-            for i, roi in enumerate(val_rois):
-                foregrounds = find_intersecting_annotations(roi, val_foreground)
+            for i, roi in enumerate(val_crops):
+                foregrounds = find_intersecting_annotations(roi.annotation, val_foreground)
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        val_wsis[roi.image], roi, foregrounds, unet, device,
+                        roi.wsi, roi, foregrounds, unet, device,
                         in_trans=transforms.ToTensor(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
                         overlap=args.overlap,
-                        n_jobs=args.n_jobs,
-                        working_path=args.working_path,
-                        cyto_argv=argv
+                        n_jobs=args.n_jobs
                     )
                 val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
                 val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
