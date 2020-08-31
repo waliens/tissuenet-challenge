@@ -6,7 +6,7 @@
   },
   "schema-version": "cytomine-0.1",
   "description": "A software for segmenting thyroid fnab images",
-  "command-line": "python wrapper.py CYTOMINE_HOST CYTOMINE_PUBLIC_KEY CYTOMINE_PRIVATE_KEY CYTOMINE_ID_PROJECT CYTOMINE_ID_SOFTWARE IJ_RADIUS IJ_THRESHOLD CYTOMINE_ID_IMAGE CYTOMINE_ZOOM_LEVEL CYTOMINE_TILE_SIZE CYTOMINE_TILE_OVERLAP N_JOBS BATCH_SIZE",
+  "command-line": "python wrapper.py CYTOMINE_HOST CYTOMINE_PUBLIC_KEY CYTOMINE_PRIVATE_KEY CYTOMINE_ID_PROJECT CYTOMINE_ID_SOFTWARE IJ_RADIUS IJ_THRESHOLD CYTOMINE_ID_IMAGE CYTOMINE_ZOOM_LEVEL TILE_SIZE TILE_OVERLAP N_JOBS BATCH_SIZE DEVICE INIT_FMAPS THRESHOLD",
   "inputs": [
     {
       "id": "cytomine_host",
@@ -87,7 +87,7 @@
       "value-key": "@ID",
       "default-value": 512,
       "optional": true,
-      "id": "cytomine_tile_size",
+      "id": "tile_size",
       "type": "Number",
       "command-line-flag": "--@id"
     },
@@ -98,7 +98,7 @@
       "value-key": "@ID",
       "default-value": 24,
       "optional": true,
-      "id": "cytomine_tile_overlap",
+      "id": "tile_overlap",
       "type": "Number",
       "command-line-flag": "--@id"
     },
@@ -121,6 +121,39 @@
       "value-key": "@ID",
       "optional": true,
       "id": "batch_size",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    },
+    {
+      "default-value": "cpu",
+      "name": "Torch device",
+      "description": "Torch device (e.g. 'cpu' for cpu, 'cuda:0' for CUDA GPU 0)",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "optional": true,
+      "id": "device",
+      "type": "String",
+      "command-line-flag": "--@id"
+    },
+    {
+      "default-value": 8,
+      "name": "Initial feature maps",
+      "description": "Number of feature maps in the initial UNet layer",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "optional": true,
+      "id": "init_fmaps",
+      "type": "Number",
+      "command-line-flag": "--@id"
+    },
+    {
+      "default-value": 0.5,
+      "name": "Threshold",
+      "description": "Probability threshold value",
+      "set-by-server": false,
+      "value-key": "@ID",
+      "optional": true,
+      "id": "threshold",
       "type": "Number",
       "command-line-flag": "--@id"
     }

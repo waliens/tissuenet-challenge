@@ -1,11 +1,22 @@
+from argparse import ArgumentParser
+
+import os
+from datetime import datetime
+
+import numpy as np
+from pathlib import Path
+
 import torch
+from clustertools import Computation
+from clustertools.storage import PickleStorage
 from cytomine import CytomineJob
+from cytomine.models import AnnotationCollection, Annotation
+from shapely.affinity import affine_transform, translate
 from sldc import SSLWorkflowBuilder, SemanticSegmenter
 from sldc.workflow import Workflow
 from sldc_cytomine import CytomineSlide, CytomineTileBuilder
 
-from inference.postproc import PostProcessing
-from inference.unet import Unet
+from unet import Unet
 
 
 class UNetSegmenter(SemanticSegmenter):
@@ -21,41 +32,43 @@ class UNetSegmenter(SemanticSegmenter):
         super().__init__(classes=classes)
         self._device = torch.device(device)
         self._unet = unet
-        self._postproc = PostProcessing(threshold=threshold)
+        self._threshold = threshold
 
     def segment(self, image):
         raise NotImplementedError("not implemented")
 
     def segment_batch(self, images):
+        import cv2
+        filenames = []
+        for i in range(images.shape[0]):
+            filenames.append(os.path.join("D:\\Git", "weakseg", "inference", "images", datetime.utcnow().isoformat().replace("-", "").replace(":", "").replace(".", "") + ".png"))
+            cv2.imwrite(filenames[i], images[i])
         with torch.no_grad():
-            x = torch.from_numpy(images).to(self._device)
-            pred = torch.sigmoid(self._unet(x))
-            post = self._postproc(pred)
-        return post.detach().cpu().numpy()
+            x_np = np.moveaxis(images[::-1] / 255, [3], [1]).astype(np.float32)
+            x = torch.from_numpy(x_np).to(self._device)
+            pred = self._unet(x, sigmoid=True)
+            thresholded = pred > self._threshold
+            return thresholded.detach().cpu().numpy().astype(np.uint8).squeeze(axis=1)
 
 
 def main(argv):
     with CytomineJob.from_cli(argv) as job:
-        device = "cpu"
-
         # network
-        unet = Unet(init_depth=8, n_classes=2)
-        unet.load_state_dict("file.file")
+        device = torch.device(job.parameters.device)
+        unet = Unet(job.parameters.init_fmaps, n_classes=1)
+        unet.load_state_dict(torch.load("1597340686.364637_e_4_val_0.0397_roc_0.9954.pth"))
+        unet.to(device)
         unet.eval()
 
-        segmenter = UNetSegmenter(
-            device=device,
-            unet=unet,
-            classes=[0, 1],
-            threshold=job.parameters.threshold
-        )
+        segmenter = UNetSegmenter(device=job.parameters.device, unet=unet, classes=[0, 1], threshold=job.parameters.threshold)
 
-        builder = CytomineTileBuilder("./tmp")
+        working_path = os.path.join(str(Path.home()), "tmp")
+        tile_builder = CytomineTileBuilder(working_path)
         builder = SSLWorkflowBuilder()
-        builder.set_n_jobs(job.parameters.cytomine_n_jobs)
+        builder.set_n_jobs(job.parameters.n_jobs)
         builder.set_overlap(job.parameters.tile_overlap)
         builder.set_tile_size(job.parameters.tile_size, job.parameters.tile_size)
-        builder.set_tile_builder(builder)
+        builder.set_tile_builder(tile_builder)
         builder.set_border_tiles(Workflow.BORDER_TILES_EXTEND)
         builder.set_background_class(0)
         builder.set_distance_tolerance(1)
@@ -67,8 +80,59 @@ def main(argv):
             id_img_instance=job.parameters.cytomine_id_image,
             zoom_level=job.parameters.cytomine_zoom_level
         )
+        image_instance = slide.image_instance
+        offset = (0, 0)
+        # height, width = 8000, 8000
+        # slide = slide.window(offset, height, width)
         results = workflow.process(slide)
 
+        def shift_poly(p):
+            p = translate(p, xoff=offset[0], yoff=offset[1])
+            p = affine_transform(p, [1, 0, 0, -1, 0, image_instance.height])
+            return p
+
+        collection = AnnotationCollection()
+        for obj in results:
+            collection.append(Annotation(
+                location=shift_poly(obj.polygon).wkt,
+                id_image=job.parameters.cytomine_id_image,
+                id_terms=[154005477],
+                id_project=job.project.id
+            ))
+
+        collection.save(n_workers=job.parameters.n_jobs)
+
+
+class ProcessWSIComputation(Computation):
+    def __init__(self, exp_name, comp_name, host=None, private_key=None, public_key=None, n_jobs=1, device="cuda:0",
+                 software_id=None, project_id=None, save_path=None, data_path=None, context="n/a", storage_factory=PickleStorage, **kwargs):
+        super().__init__(exp_name, comp_name, context=context, storage_factory=storage_factory)
+        self._n_jobs = n_jobs
+        self._device = device
+        self._save_path = save_path
+        self._cytomine_private_key = private_key
+        self._cytomine_public_key = public_key
+        self._cytomine_host = host
+        self._data_path = data_path
+        self._software_id = software_id
+        self._project_id = project_id
+
+    def run(self, results, image_id=None, batch_size=4, tile_size=512, tile_overlap=0, init_fmaps=16):
+
+        argv = ["--cytomine_host", str(self._cytomine_host),
+                "--cytomine_public_key", str(self._cytomine_public_key),
+                "--cytomine_private_key", str(self._cytomine_private_key),
+                "--software_id", str(self._software_id),
+                "--project_id", str(self._project_id),
+                "--cytomine_id_image", str(image_id),
+                "--cytomine_zoom_level", str(0),
+                "--cytomine_tile_size", str(tile_size),
+                "--cytomine_tile_overlap", str(tile_overlap),
+                "--n_jobs", str(self._n_jobs),
+                "--batch_size", str(batch_size),
+                "--device", str("cuda:0")]
+        for k, v in main(argv).items():
+            results[k] = v
 
 
 if __name__ == "__main__":

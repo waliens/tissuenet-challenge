@@ -162,7 +162,7 @@ class Unet(nn.Module):
         in_ch = out_ch
         self.conv10 = nn.Conv2d(in_ch, n_classes, 1)
 
-    def forward(self, x):
+    def forward(self, x, sigmoid=False):
         # encoder
         x = self.conv1(x)
         x = self.conv2(x)
@@ -176,6 +176,8 @@ class Unet(nn.Module):
         x = self.up_conv8(x, self.conv2.skip_x)
         x = self.up_conv9(x, self.conv1.skip_x)
         x = self.conv10(x)
+        if sigmoid:
+            x = torch.sigmoid(x)
         return x
 
 
