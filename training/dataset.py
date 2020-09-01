@@ -1,6 +1,7 @@
 import logging
 import os
 
+import PIL
 import cv2
 import numpy as np
 import sldc
@@ -13,7 +14,7 @@ from shapely.affinity import translate, affine_transform
 from shapely.geometry import box
 from sldc import TileTopology
 from sldc.image import FixedSizeTileTopology, DefaultTileBuilder
-from sldc_cytomine import CytomineTileBuilder
+from sldc_cytomine import CytomineTileBuilder, CytomineSlide
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
@@ -57,16 +58,32 @@ class PilImage(sldc.Image):
         return self.image
 
 
+def powdiv(v, p):
+    return v / (2 ** p)
+
+
+def convert_poly(p, zoom, im_height):
+    """Move a polygon to the correct zoom level and referential"""
+    polygon = affine_transform(p, [1, 0, 0, -1, 0, im_height])
+    return affine_transform(polygon, [powdiv(1, zoom), 0, 0, powdiv(1, zoom), 0, 0])
+
+
 class AnnotationCrop(object):
-    def __init__(self, wsi, annotation, working_path, tile_size=512):
+    def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0):
         self._annotation = annotation
         self._tile_size = tile_size
-        self._wsi = wsi
+        self._wsi = CytomineSlide(wsi, zoom_level=zoom_level)
+        self._builder = CytomineTileBuilder(working_path, n_jobs=n_jobs)
         self._working_path = working_path
+        self._zoom_level = zoom_level
 
     @property
     def wsi(self):
         return self._wsi
+
+    @property
+    def image_instance(self):
+        return self._wsi.image_instance
 
     @property
     def annotation(self):
@@ -90,34 +107,16 @@ class AnnotationCrop(object):
 
     def _get_image_filepath(self):
         (x, y), width, height = self._extract_image_box()
-        return os.path.join(self._working_path, "{}-{}-{}-{}-{}.png").format(self._wsi.id, x, y, width, height)
+        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(self._zoom_level, self.image_instance.id, x, y, width, height)
 
     def _download_image(self):
-        (x, y), width, height = self._extract_image_box()
         filepath = self._get_image_filepath()
-        if not self._wsi.window(x, y, width, height, dest_pattern=filepath, override=False):
-            raise ValueError("could not download the window '{}'".format(filepath))
-        self._fix_image()
+        if not os.path.isfile(filepath):
+            (x, y), width, height = self._extract_image_box()
+            tile = self._wsi.tile(self._builder, (x, y), width, height)
+            image = PIL.Image.fromarray(tile.np_image)
+            image.save(filepath)
         return filepath
-
-    def _fix_image(self):
-        (x, y), width, height = self._extract_image_box()
-        im = Image.open(self._get_image_filepath())
-        if im.width == width and im.height == height:
-            return
-        print("fixing image '{}'".format(self._get_image_filepath()))
-        new_width, new_height = width, height
-        if im.width != width:
-            new_width += 1
-        if im.height != height:
-            new_height += 1
-        new_filepath = os.path.join(self._working_path, "{}-{}-{}-{}-{}.png").format(self._wsi.id, x, y, new_width, new_height)
-        if not self._wsi.window(x, y, new_width, new_height, dest_pattern=new_filepath, override=False):
-            raise ValueError("could not download the window '{}'".format(new_filepath))
-        new_im = Image.open(new_filepath)
-        new_im = new_im.crop([0, 0, width, height])
-        new_im.save(self._get_image_filepath())
-        os.remove(new_filepath)
 
     def download(self):
         print("download '{}'".format(self._get_image_filepath()))
@@ -125,10 +124,11 @@ class AnnotationCrop(object):
 
     def _polygon(self):
         polygon = wkt.loads(self._annotation.location)
-        return affine_transform(polygon, [1, 0, 0, -1, 0, self._wsi.height])
+        return convert_poly(polygon, self._zoom_level, self.wsi.height)
 
     def _crop_bounds(self):
-        return [int(v) for v in self._polygon().bounds]
+        """at the specified zoom level"""
+        return [max(0, int(v)) for v in self._polygon().bounds]
 
     def _crop_dims(self):
         x_min, y_min, x_max, y_max = self._crop_bounds()
@@ -201,12 +201,12 @@ class TileTopologyDataset(Dataset):
         return len(self._topology)
 
 
-def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_size=1, tile_size=256, overlap=0, n_jobs=1):
+def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_size=1, tile_size=256, overlap=0, n_jobs=1, zoom_level=0):
     """
     Parameters
     ----------
     image: ImageInstance
-    roi: CropAnnotation
+    roi: AnnotationCrop
         The polygon representing the roi to process
     ground_truth: iterable of Annotation
         The ground truth annotations
@@ -224,14 +224,16 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
         Tile overlap
     n_jobs: int
         Number of jobs available
+    zoom_level: int
+        Zoom level
 
     Returns
     -------
     """
     # build ground truth
-    affine_matrix = [1, 0, 0, -1, 0, image.height]
-    roi_poly = affine_transform(wkt.loads(roi.annotation.location), affine_matrix)
-    ground_truth = [affine_transform(wkt.loads(g.location), affine_matrix) for g in ground_truth]
+    slide = CytomineSlide(image, zoom_level=zoom_level)
+    roi_poly = convert_poly(wkt.loads(roi.annotation.location), zoom_level, slide.height)
+    ground_truth = [convert_poly(wkt.loads(g.location), zoom_level, slide.height) for g in ground_truth]
     min_x, min_y, max_x, max_y = (int(v) for v in roi_poly.bounds)
     mask_dims = (int(max_x - min_x), int(max_y - min_y))
     translated_gt = [translate(g.intersection(roi_poly), xoff=-min_x, yoff=-min_y) for g in ground_truth]

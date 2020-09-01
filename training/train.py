@@ -4,8 +4,8 @@ from datetime import datetime
 from pathlib import Path
 
 import joblib
-import numpy as np
 import torch
+import numpy as np
 
 
 from clustertools import Computation
@@ -16,7 +16,6 @@ from joblib import delayed
 from shapely import wkt
 from sklearn import metrics
 from sldc import batch_split
-from sldc_cytomine import CytomineSlide
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
@@ -86,6 +85,7 @@ def main(argv):
         parser.add_argument("-d", "--device", dest="device", default="cpu")
         parser.add_argument("-o", "--overlap", dest="overlap", default=0, type=int)
         parser.add_argument("-t", "--tile_size", dest="tile_size", default=256, type=int)
+        parser.add_argument("-z", "--zoom_level", dest="zoom_level", default=0, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--data_path", "--dpath", dest="data_path",
