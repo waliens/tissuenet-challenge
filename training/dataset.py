@@ -1,4 +1,3 @@
-import logging
 import os
 
 import PIL
@@ -6,8 +5,7 @@ import cv2
 import numpy as np
 import sldc
 from PIL import Image
-from cytomine import Cytomine
-from cytomine.models import AnnotationCollection, ImageInstance
+from cytomine.models import ImageInstance
 from rasterio.features import rasterize
 from shapely import wkt
 from shapely.affinity import translate, affine_transform
@@ -134,14 +132,26 @@ class AnnotationCrop(object):
         x_min, y_min, x_max, y_max = self._crop_bounds()
         return x_max - x_min, y_max - y_min
 
+    def _robust_load_crop(self, x, y):
+        attempts = 0
+        filepath = self._get_image_filepath()
+        while True:
+            try:
+                return Image.open(filepath).crop([x, y, x + self._tile_size, y + self._tile_size])
+            except OSError as e:
+                if attempts > 3:
+                    raise e
+                print("recreate '{}'".format(filepath))
+                os.remove(filepath)
+                self.download()
+
     def random_crop_and_mask(self):
         """in image coordinate system"""
         (x_min, y_min), width, height = self._extract_image_box()
         x = np.random.randint(0, width - self._tile_size + 1)
         y = np.random.randint(0, height - self._tile_size + 1)
 
-        image = Image.open(self._get_image_filepath())
-        crop = image.crop([x, y, x + self._tile_size, y + self._tile_size])
+        crop = self._robust_load_crop(x, y)
 
         translated = translate(self._polygon(), xoff=-(x_min + x), yoff=-(y_min + y))
         in_window = box(0, 0, self._tile_size, self._tile_size).intersection(translated)
@@ -155,6 +165,12 @@ class AnnotationCrop(object):
     @property
     def sldc_image(self):
         return PilImage(self._get_image_filepath())
+
+    @property
+    def sldc_window(self):
+        xmin, ymin, _, _ = self._crop_bounds()
+        width, height = self._crop_dims()
+        return self._wsi.window((xmin, ymin), width, height)
 
     def topology(self, width, height, overlap=0):
         base_topology = TileTopology(self.sldc_image, tile_builder=self.tile_builder, max_width=width, max_height=height, overlap=overlap)

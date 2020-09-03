@@ -11,11 +11,12 @@ import numpy as np
 from clustertools import Computation
 from clustertools.storage import PickleStorage
 from cytomine import Cytomine
-from cytomine.models import AnnotationCollection, ImageInstance
+from cytomine.models import AnnotationCollection, ImageInstance, Annotation
 from joblib import delayed
 from shapely import wkt
+from shapely.affinity import affine_transform
 from sklearn import metrics
-from sldc import batch_split
+from sldc import batch_split, BinaryLocator
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
@@ -61,6 +62,11 @@ def download_wsi(path, identifiers, argv, n_jobs=1):
     batches = batch_split(n_jobs, identifiers)
     results = joblib.Parallel(n_jobs)(delayed(_parallel_download_wsi)(batch, path, argv) for batch in batches)
     return [i for b in results for i in b]
+
+
+def polyref_proc2cyto(p, height_at_zoom_level, zoom_level=0):
+    p = affine_transform(p, [1, 0, 0, -1, 0, height_at_zoom_level])
+    return affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
 
 
 def main(argv):
@@ -122,11 +128,11 @@ def main(argv):
         images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
 
         train_crops = [
-            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size)
+            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
             for annot in train_collection
         ]
         val_crops = [
-            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size)
+            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
             for annot in val_rois
         ]
 
@@ -185,13 +191,15 @@ def main(argv):
                 foregrounds = find_intersecting_annotations(roi.annotation, val_foreground)
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        roi.wsi, roi, foregrounds, unet, device,
+                        roi.wsi.image_instance, roi, foregrounds, unet, device,
                         in_trans=transforms.ToTensor(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
                         overlap=args.overlap,
-                        n_jobs=args.n_jobs
+                        n_jobs=args.n_jobs,
+                        zoom_level=args.zoom_level
                     )
+
                 val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
                 val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
 
@@ -203,7 +211,7 @@ def main(argv):
             print("> roc_auc : {:1.5f}".format(roc_auc))
             print("------------------------------")
 
-            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc)
+            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level)
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
             results["val_losses"].append(val_loss)
@@ -225,7 +233,7 @@ class TrainComputation(Computation):
         self._cytomine_host = host
         self._data_path = data_path
 
-    def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16):
+    def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -241,7 +249,8 @@ class TrainComputation(Computation):
                 "--init_fmaps", str(init_fmaps),
                 "--data_path", str(self._data_path),
                 "--working_path", os.path.join(os.environ["SCRATCH"], os.environ["SLURM_JOB_ID"]),
-                "--save_path", str(self._save_path)]
+                "--save_path", str(self._save_path),
+                "--zoom_level", str(zoom_level)]
         for k, v in main(argv).items():
             results[k] = v
 
