@@ -10,7 +10,8 @@ import torch
 from clustertools import Computation
 from clustertools.storage import PickleStorage
 from cytomine import CytomineJob
-from cytomine.models import AnnotationCollection, Annotation
+from cytomine.models import AnnotationCollection, Annotation, ImageInstance
+from shapely import wkt
 from shapely.affinity import affine_transform, translate
 from sldc import SSLWorkflowBuilder, SemanticSegmenter
 from sldc.workflow import Workflow
@@ -51,12 +52,18 @@ class UNetSegmenter(SemanticSegmenter):
             return thresholded.detach().cpu().numpy().astype(np.uint8).squeeze(axis=1)
 
 
+def shift_poly(p, inst, offset=(0, 0)):
+    p = translate(p, xoff=offset[0], yoff=offset[1])
+    p = affine_transform(p, [1, 0, 0, -1, 0, inst.height])
+    return p
+
+
 def main(argv):
     with CytomineJob.from_cli(argv) as job:
         # network
         device = torch.device(job.parameters.device)
         unet = Unet(job.parameters.init_fmaps, n_classes=1)
-        unet.load_state_dict(torch.load("1597340686.364637_e_4_val_0.0397_roc_0.9954.pth"))
+        unet.load_state_dict(torch.load("/home/rmormont/models/thyroid-unet/1599132006.366569_e_4_val_0.0402_roc_0.9957_z0.pth"))
         unet.to(device)
         unet.eval()
 
@@ -77,29 +84,29 @@ def main(argv):
         workflow = builder.get()
 
         slide = CytomineSlide(
-            id_img_instance=job.parameters.cytomine_id_image,
+            img_instance=ImageInstance().fetch(job.parameters.cytomine_id_image),
             zoom_level=job.parameters.cytomine_zoom_level
         )
         image_instance = slide.image_instance
-        offset = (0, 0)
-        # height, width = 8000, 8000
-        # slide = slide.window(offset, height, width)
-        results = workflow.process(slide)
 
-        def shift_poly(p):
-            p = translate(p, xoff=offset[0], yoff=offset[1])
-            p = affine_transform(p, [1, 0, 0, -1, 0, image_instance.height])
-            return p
+        collection = AnnotationCollection(showWKT=True, showMeta=True).fetch_with_filter("project", 77150529)
+        rois = [shift_poly(wkt.loads(annot.wkt), image_instance)
+                for annot in collection
+                if annot.image == job.parameters.cytomine_id_image
+                    and len(annot.term) > 0 and annot.term[0] in {154890363} ]
 
         collection = AnnotationCollection()
-        for obj in results:
-            collection.append(Annotation(
-                location=shift_poly(obj.polygon).wkt,
-                id_image=job.parameters.cytomine_id_image,
-                id_terms=[154005477],
-                id_project=job.project.id
-            ))
-
+        for roi in rois:
+            xmin, ymin, xmax, ymax = [int(v) for v in roi.bounds]
+            window = slide.window((xmin, ymax), xmax - xmin, ymax - ymin)
+            results = workflow.process(window)
+            for obj in results:
+                collection.append(Annotation(
+                    location=shift_poly(obj.polygon, image_instance, offset=window.abs_offset),
+                    id_image=job.parameters.cytomine_id_image,
+                    id_terms=[154005477],
+                    id_project=job.project.id
+                ))
         collection.save(n_workers=job.parameters.n_jobs)
 
 
@@ -117,8 +124,7 @@ class ProcessWSIComputation(Computation):
         self._software_id = software_id
         self._project_id = project_id
 
-    def run(self, results, image_id=None, batch_size=4, tile_size=512, tile_overlap=0, init_fmaps=16):
-
+    def run(self, results, image_id=None, batch_size=4, tile_size=512, tile_overlap=0, init_fmaps=16, zoom_level=0):
         argv = ["--cytomine_host", str(self._cytomine_host),
                 "--cytomine_public_key", str(self._cytomine_public_key),
                 "--cytomine_private_key", str(self._cytomine_private_key),
@@ -130,7 +136,8 @@ class ProcessWSIComputation(Computation):
                 "--cytomine_tile_overlap", str(tile_overlap),
                 "--n_jobs", str(self._n_jobs),
                 "--batch_size", str(batch_size),
-                "--device", str("cuda:0")]
+                "--device", str("cuda:0"),
+                "--zoom_level", str(zoom_level)]
         for k, v in main(argv).items():
             results[k] = v
 

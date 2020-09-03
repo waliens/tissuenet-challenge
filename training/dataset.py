@@ -62,8 +62,8 @@ def powdiv(v, p):
 
 def convert_poly(p, zoom, im_height):
     """Move a polygon to the correct zoom level and referential"""
-    polygon = affine_transform(p, [1, 0, 0, -1, 0, im_height])
-    return affine_transform(polygon, [powdiv(1, zoom), 0, 0, powdiv(1, zoom), 0, 0])
+    polygon = affine_transform(p, [powdiv(1, zoom), 0, 0, powdiv(1, zoom), 0, 0])
+    return affine_transform(polygon, [1, 0, 0, -1, 0, im_height])
 
 
 class AnnotationCrop(object):

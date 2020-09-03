@@ -33,6 +33,7 @@ if __name__ == "__main__":
     param_set.add_parameters(tile_overlap=[0])
     param_set.add_parameters(tile_size=[512])
     param_set.add_parameters(init_fmaps=8)
+    param_set.add_parameters(zoom_level=[0])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
