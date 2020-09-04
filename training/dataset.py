@@ -2,6 +2,7 @@ import os
 
 import PIL
 import cv2
+import math
 import numpy as np
 import sldc
 from PIL import Image
@@ -87,13 +88,25 @@ class AnnotationCrop(object):
     def annotation(self):
         return self._annotation
 
+    @property
+    def polygon(self):
+        return self._polygon()
+
+    @property
+    def image_box(self):
+        return self._extract_image_box()
+
     def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
         start = crop_start
         size = crop_size
         if crop_size < self._tile_size:
             start = crop_start + (crop_size - self._tile_size) // 2
             size = self._tile_size
+        # make sure that the tile is in the image
+        start = max(0, start)
         start = min(start, wsi_size - size)
+        if start < 0:
+            raise ValueError("image is smaller than the tile size")
         return start, size
 
     def _extract_image_box(self):
@@ -126,7 +139,8 @@ class AnnotationCrop(object):
 
     def _crop_bounds(self):
         """at the specified zoom level"""
-        return [max(0, int(v)) for v in self._polygon().bounds]
+        x_min, y_min, x_max, y_max = self._polygon().bounds
+        return int(x_min), int(y_min), math.ceil(x_max), math.ceil(y_max)
 
     def _crop_dims(self):
         x_min, y_min, x_max, y_max = self._crop_bounds()
@@ -246,19 +260,19 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     Returns
     -------
     """
+    # topology
+    tile_topology = roi.topology(width=tile_size, height=tile_size, overlap=overlap)
+    (x_min, y_min), width, height = roi.image_box
+    mask_dims = (width, height)
+
     # build ground truth
-    slide = CytomineSlide(image, zoom_level=zoom_level)
-    roi_poly = convert_poly(wkt.loads(roi.annotation.location), zoom_level, slide.height)
-    ground_truth = [convert_poly(wkt.loads(g.location), zoom_level, slide.height) for g in ground_truth]
-    min_x, min_y, max_x, max_y = (int(v) for v in roi_poly.bounds)
-    mask_dims = (int(max_x - min_x), int(max_y - min_y))
-    translated_gt = [translate(g.intersection(roi_poly), xoff=-min_x, yoff=-min_y) for g in ground_truth]
+    roi_poly = roi.polygon
+    ground_truth = [convert_poly(wkt.loads(g.location), zoom_level, roi.wsi.height) for g in ground_truth]
+    translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
+
     y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
     y_pred = np.zeros(y_true.shape, dtype=np.double)
     y_acc = np.zeros(y_true.shape, dtype=np.int)
-
-    # topology
-    tile_topology = roi.topology(width=tile_size, height=tile_size, overlap=overlap)
 
     # dataset and loader
     dataset = TileTopologyDataset(tile_topology, trans=in_trans)
