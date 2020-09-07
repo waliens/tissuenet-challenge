@@ -187,11 +187,13 @@ def main(argv):
             # validation
             val_losses = np.zeros(len(val_rois), dtype=np.float)
             val_roc_auc = np.zeros(len(val_rois), dtype=np.float)
+            val_cm = np.zeros([len(val_rois), 2, 2], dtype=np.int)
+
             for i, roi in enumerate(val_crops):
                 foregrounds = find_intersecting_annotations(roi.annotation, val_foreground)
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        roi.wsi.image_instance, roi, foregrounds, unet, device,
+                        roi, foregrounds, unet, device,
                         in_trans=transforms.ToTensor(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
@@ -202,6 +204,7 @@ def main(argv):
 
                 val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
                 val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
+                val_cm[i] = metrics.confusion_matrix(y_true.flatten().astype(np.uint8), (y_pred.flatten() > 0.5).astype(np.uint8))
 
             print("------------------------------")
             print("Epoch {}:".format(e))
@@ -209,9 +212,14 @@ def main(argv):
             roc_auc = np.mean(val_roc_auc)
             print("> val_loss: {:1.5f}".format(val_loss))
             print("> roc_auc : {:1.5f}".format(roc_auc))
+            cm = np.sum(val_cm, axis=0)
+            cnt = np.sum(val_cm)
+            print("CM at 0.5 threshold")
+            print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
+            print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
             print("------------------------------")
 
-            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level)
+            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level, args.tile_size)
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
             results["val_losses"].append(val_loss)

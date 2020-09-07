@@ -231,11 +231,10 @@ class TileTopologyDataset(Dataset):
         return len(self._topology)
 
 
-def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_size=1, tile_size=256, overlap=0, n_jobs=1, zoom_level=0):
+def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, tile_size=256, overlap=0, n_jobs=1, zoom_level=0):
     """
     Parameters
     ----------
-    image: ImageInstance
     roi: AnnotationCrop
         The polygon representing the roi to process
     ground_truth: iterable of Annotation
@@ -263,7 +262,7 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
     # topology
     tile_topology = roi.topology(width=tile_size, height=tile_size, overlap=overlap)
     (x_min, y_min), width, height = roi.image_box
-    mask_dims = (width, height)
+    mask_dims = (height, width)
 
     # build ground truth
     roi_poly = roi.polygon
@@ -284,7 +283,7 @@ def predict_roi(image, roi, ground_truth, model, device, in_trans=None, batch_si
 
         # accumulate predictions
         for i, identifier in enumerate(ids):
-            x_off, y_off = tile_topology.tile_offset(identifier)
+            x_off, y_off = tile_topology.tile_offset(identifier.item())
             y_pred[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y[i].detach().cpu().squeeze().numpy()
             y_acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
 
