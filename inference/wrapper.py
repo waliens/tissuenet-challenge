@@ -69,7 +69,7 @@ def pick_model(path, tile_size, zoom_level):
         fn = pattern.match(filename)
         if fn is None:
             raise ValueError("filename not maching regex")
-        _, epoch, loss, roc, zoom, size = tuple(fn.groups())
+        epoch, loss, roc, zoom, size = tuple(fn.groups())
         if tile_size != int(size) or zoom_level != int(zoom):
             continue
         epoch = int(epoch)
