@@ -1,3 +1,4 @@
+import re
 from argparse import ArgumentParser
 
 import os
@@ -52,18 +53,39 @@ class UNetSegmenter(SemanticSegmenter):
             return thresholded.detach().cpu().numpy().astype(np.uint8).squeeze(axis=1)
 
 
-def shift_poly(p, inst, offset=(0, 0)):
+def shift_poly(p, inst, offset=(0, 0), zoom_level=0):
     p = translate(p, xoff=offset[0], yoff=offset[1])
     p = affine_transform(p, [1, 0, 0, -1, 0, inst.height])
+    p = affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
     return p
+
+
+def pick_model(path, tile_size, zoom_level):
+    files = os.listdir(path)
+    pattern = re.compile(r"^[0-9.]+_e_([0-9]+)_val_([0-9.]{6})_roc_([0-9.]{6})_z([0-9]+)_s([0-9]+).pth$")
+    max_epoch = -1
+    kept_model = None
+    for filename in files:
+        fn = pattern.match(filename)
+        if fn is None:
+            raise ValueError("filename not maching regex")
+        _, epoch, loss, roc, zoom, size = tuple(fn.groups())
+        if tile_size != int(size) or zoom_level != int(zoom):
+            continue
+        epoch = int(epoch)
+        if epoch > max_epoch:
+            max_epoch = epoch
+            kept_model = filename
+    return os.path.join(path, kept_model)
 
 
 def main(argv):
     with CytomineJob.from_cli(argv) as job:
-        # network
+        model_path = os.path.join(str(Path.home()), "models", "thyroid-unet")
+        model_filepath = pick_model(model_path, job.parameters.tile_size, job.parameters.cytomine_zoom_level)
         device = torch.device(job.parameters.device)
         unet = Unet(job.parameters.init_fmaps, n_classes=1)
-        unet.load_state_dict(torch.load("/home/rmormont/models/thyroid-unet/1599132006.366569_e_4_val_0.0402_roc_0.9957_z0.pth"))
+        unet.load_state_dict(torch.load(model_filepath, map_location=device))
         unet.to(device)
         unet.eval()
 
@@ -72,7 +94,7 @@ def main(argv):
         working_path = os.path.join(str(Path.home()), "tmp")
         tile_builder = CytomineTileBuilder(working_path)
         builder = SSLWorkflowBuilder()
-        builder.set_n_jobs(job.parameters.n_jobs)
+        builder.set_n_jobs(1)
         builder.set_overlap(job.parameters.tile_overlap)
         builder.set_tile_size(job.parameters.tile_size, job.parameters.tile_size)
         builder.set_tile_builder(tile_builder)
@@ -88,26 +110,44 @@ def main(argv):
             zoom_level=job.parameters.cytomine_zoom_level
         )
         image_instance = slide.image_instance
+        results = workflow.process(slide)
 
-        collection = AnnotationCollection(showWKT=True, showMeta=True).fetch_with_filter("project", 77150529)
-        rois = [shift_poly(wkt.loads(annot.wkt), image_instance)
-                for annot in collection
-                if annot.image == job.parameters.cytomine_id_image
-                    and len(annot.term) > 0 and annot.term[0] in {154890363} ]
+        print("-------------------------")
+        print(len(results))
+        print("-------------------------")
 
         collection = AnnotationCollection()
-        for roi in rois:
-            xmin, ymin, xmax, ymax = [int(v) for v in roi.bounds]
-            window = slide.window((xmin, ymax), xmax - xmin, ymax - ymin)
-            results = workflow.process(window)
-            for obj in results:
-                collection.append(Annotation(
-                    location=shift_poly(obj.polygon, image_instance, offset=window.abs_offset),
-                    id_image=job.parameters.cytomine_id_image,
-                    id_terms=[154005477],
-                    id_project=job.project.id
-                ))
+        for obj in results:
+            collection.append(Annotation(
+                location=shift_poly(obj.polygon, image_instance, zoom_level=job.parameters.cytomine_zoom_level),
+                id_image=job.parameters.cytomine_id_image,
+                id_terms=[154005477],
+                id_project=job.project.id
+            ))
         collection.save(n_workers=job.parameters.n_jobs)
+
+        return {}
+
+        # collection.save(n_workers=job.parameters.n_jobs)
+        # collection = AnnotationCollection(showWKT=True, showMeta=True).fetch_with_filter("project", 77150529)
+        # rois = [shift_poly(wkt.loads(annot.wkt), image_instance)
+        #         for annot in collection
+        #         if annot.image == job.parameters.cytomine_id_image
+        #             and len(annot.term) > 0 and annot.term[0] in {154890363} ]
+        #
+        # collection = AnnotationCollection()
+        # for roi in rois:
+        #     xmin, ymin, xmax, ymax = [int(v) for v in roi.bounds]
+        #     window = slide.window((xmin, ymax), xmax - xmin, ymax - ymin)
+        #     results = workflow.process(window)
+        #     for obj in results:
+        #         collection.append(Annotation(
+        #             location=shift_poly(obj.polygon, image_instance, offset=window.abs_offset),
+        #             id_image=job.parameters.cytomine_id_image,
+        #             id_terms=[154005477],
+        #             id_project=job.project.id
+        #         ))
+        # collection.save(n_workers=job.parameters.n_jobs)
 
 
 class ProcessWSIComputation(Computation):
@@ -137,7 +177,7 @@ class ProcessWSIComputation(Computation):
                 "--n_jobs", str(self._n_jobs),
                 "--batch_size", str(batch_size),
                 "--device", str("cuda:0"),
-                "--zoom_level", str(zoom_level)]
+                "--cytomine_zoom_level", str(zoom_level)]
         for k, v in main(argv).items():
             results[k] = v
 

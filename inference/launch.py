@@ -28,12 +28,12 @@ if __name__ == "__main__":
     os.makedirs(namespace.save_path, exist_ok=True)
 
     param_set = ParameterSet()
-    param_set.add_parameters(image_id=namespace.image_id)
+    param_set.add_parameters(image_id=[77150767, 77150761, 77150809])
     param_set.add_parameters(batch_size=[8])
     param_set.add_parameters(tile_overlap=[0])
-    param_set.add_parameters(tile_size=[512])
+    param_set.add_parameters(tile_size=256)
     param_set.add_parameters(init_fmaps=8)
-    param_set.add_parameters(zoom_level=[0])
+    param_set.add_parameters(zoom_level=2)
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
