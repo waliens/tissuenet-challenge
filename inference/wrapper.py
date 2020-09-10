@@ -4,10 +4,9 @@ from argparse import ArgumentParser
 import os
 from datetime import datetime
 
-import numpy as np
+import torch
 from pathlib import Path
 
-import torch
 from clustertools import Computation
 from clustertools.storage import PickleStorage
 from cytomine import CytomineJob
@@ -109,7 +108,6 @@ def main(argv):
             img_instance=ImageInstance().fetch(job.parameters.cytomine_id_image),
             zoom_level=job.parameters.cytomine_zoom_level
         )
-        image_instance = slide.image_instance
         results = workflow.process(slide)
 
         print("-------------------------")
@@ -118,8 +116,9 @@ def main(argv):
 
         collection = AnnotationCollection()
         for obj in results:
+            wkt = shift_poly(obj.polygon, slide, zoom_level=job.parameters.cytomine_zoom_level).wkt
             collection.append(Annotation(
-                location=shift_poly(obj.polygon, image_instance, zoom_level=job.parameters.cytomine_zoom_level),
+                location=wkt,
                 id_image=job.parameters.cytomine_id_image,
                 id_terms=[154005477],
                 id_project=job.project.id
