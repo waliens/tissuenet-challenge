@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import os
 from datetime import datetime
 
-import torch
+import torchAr
 from pathlib import Path
 
 from clustertools import Computation
