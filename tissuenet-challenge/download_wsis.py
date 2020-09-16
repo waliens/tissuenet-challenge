@@ -4,10 +4,12 @@ import requests
 from cytomine import Cytomine
 from cytomine.models._utilities import generic_download
 
+
 def split_s3_filename(filename):
     _, path = filename.split("://", 1)
     bucket, path = path.split("/", 1)
     return bucket, path
+
 
 def format_size(size):
     if size > 10 ** 9:
@@ -47,7 +49,8 @@ def download(args):
 
 def main(argv):
     with Cytomine.connect_from_cli(argv):
-        download_path = argv[-1]
+        download_path = argv[-2]
+        n_jobs = int(argv[-1])
         os.makedirs(download_path, exist_ok=True)
 
         # with open("train_labels.csv") as file:
@@ -92,13 +95,13 @@ def main(argv):
 
             urls = list()
             for line in reader:
-                bucket, path = split_s3_filename(line['eu_wsi_url'])
+                bucket, path = split_s3_filename(line['eu_tif_url'])
                 os.makedirs(download_path, exist_ok=True)
-                filepath = os.path.join(download_path, os.path.basename(line['eu_wsi_url']))
+                filepath = os.path.join(download_path, os.path.basename(line['eu_tif_url']))
                 print(filepath)
                 urls.append(("https://" + bucket + ".s3.amazonaws.com/" + path, filepath))
 
-            generic_download(urls, download, n_workers=4)
+            generic_download(urls, download, n_workers=n_jobs)
 
 
 if __name__ == "__main__":
