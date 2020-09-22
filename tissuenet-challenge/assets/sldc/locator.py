@@ -124,9 +124,9 @@ def flatten_geoms(geoms):
 def _locate(segmented, offset=None):
     """Inspired from: https://goo.gl/HYPrR1"""
     # CV_RETR_EXTERNAL to only get external contours.
-    _, contours, hierarchy = cv2.findContours(segmented.copy(),
-                                              cv2.RETR_CCOMP,
-                                              cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(segmented.copy(),
+                                           cv2.RETR_CCOMP,
+                                           cv2.CHAIN_APPROX_SIMPLE)
 
     # Note: points are represented as (col, row)-tuples apparently
     transform = identity
