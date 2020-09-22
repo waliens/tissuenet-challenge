@@ -30,7 +30,7 @@ class ExcludingEmptySlideDataset(Dataset):
         return filtered2full_ids
 
     def __getitem__(self, item):
-        image = Image.fromarray(self._topology.tile(item + 1).np_image)
+        image = Image.fromarray(self._topology.tile(self._filtered_identifiers[item]).np_image)
         if self._trans is not None:
             image = self._trans(image)
         return item + 1, image
@@ -68,7 +68,27 @@ class MultiPolygonFilteredTopologyDataset(Dataset):
         return self._cumsum_sizes[-1] + len(self._datasets[-1])
 
 
-def foreground_detect(slide_path, zoom_level=0, tresh_c=5, morph_iter=3, area_ratio=2.5):
+def get_image_meta(path):
+    """
+    n-pages, (height, width)
+    """
+    image = pyvips.Image.new_from_file(path)
+    return image.get("n-pages"), (image.height, image.width)
+
+
+def determine_tissue_extract_level(slide_path, desired_processing_size=2048):
+    levels, (max_height, max_width) = get_image_meta(slide_path)
+    ref_size = max(max_width, max_height)
+    best_size = ref_size
+    best_level = 0
+    while best_size > desired_processing_size and best_level < levels - 1:
+        best_size //= 2
+        best_level += 1
+    return best_level
+
+
+def foreground_detect(slide_path, desired_processing_size=2048, threshold=205, morph_iter=3, area_ratio=0.5):
+    zoom_level = determine_tissue_extract_level(slide_path, desired_processing_size=desired_processing_size)
     vips_image = pyvips.Image.new_from_file(slide_path, page=zoom_level)
     height, width, bands = vips_image.height, vips_image.width, vips_image.bands
     image = np.ndarray(
@@ -76,19 +96,21 @@ def foreground_detect(slide_path, zoom_level=0, tresh_c=5, morph_iter=3, area_ra
         dtype=np.uint8,
         shape=(height, width, bands)
     )
+    image = np.mean(image, axis=2).astype(np.uint8)  # grayscale
 
     max_dim = max(height, width)
-    block_size = int(0.45 * max_dim)
-    block_size -= block_size % 2  # to make it odd
+    # block_size = int(0.45 * max_dim)
+    # block_size -= 1 - block_size % 2  # to make it odd
+    # thresh = cv2.adaptiveThreshold(image, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, tresh_c)
+    # thresh = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    thresh = (image < threshold).astype(np.uint8)
+    kernel_dim = max(int(0.004 * max_dim), 3)
+    kernel_dim -= 1 - kernel_dim % 2
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, ksize=(kernel_dim, kernel_dim))
+    dilated = cv2.dilate(thresh, kernel, iterations=morph_iter)
+    eroded = cv2.erode(dilated, kernel, iterations=morph_iter)
 
-    thresh = cv2.adaptiveThreshold(image, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, tresh_c)
-    kernel_dim = max(int(0.03 * max_dim), 5)
-    kernel = np.ones((kernel_dim, kernel_dim), np.uint8)
-    eroded = cv2.erode(thresh, kernel, iterations=morph_iter)
-    dilated = cv2.dilate(eroded, kernel, iterations=morph_iter)
-    extended = cv2.copyMakeBorder(dilated, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=1)
-
-    objects = mask_to_objects_2d(extended)
+    objects = mask_to_objects_2d(eroded)
 
     # Only keep components greater than 2.5% of whole image
     min_area = int(area_ratio * width * height / 100)
@@ -96,17 +118,17 @@ def foreground_detect(slide_path, zoom_level=0, tresh_c=5, morph_iter=3, area_ra
       affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
       for p, _ in objects
       if p.area > min_area
-    ]
+    ], (height, width), zoom_level
 
 
-def classify(slide_path, model, tile_size, num_workers=0, device="cpu", zoom_for_classif=2, zoom_for_filter=2, n_classes=4):
+def classify(slide_path, model, tile_size, num_workers=0, device="cpu", zoom_level=2, n_classes=4, desired_processing_size=2048):
     # preprocessing
-    tissues = foreground_detect(slide_path, zoom_level=zoom_for_filter)
-    zoom_ratio = 1 / 2 ** zoom_for_classif
+    tissues, _, extract_zoom_level = foreground_detect(slide_path, desired_processing_size=desired_processing_size)
+    zoom_ratio = 2 ** (extract_zoom_level - zoom_level)
     tissues = [affine_transform(p, [zoom_ratio, 0, 0, zoom_ratio]) for p in tissues]
 
     # inference
-    slide = PyVipsSlide(slide_path, zoom_level=zoom_for_classif)
+    slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
     tile_builder = PyVipsTileBuilder(slide)
     dataset = MultiPolygonFilteredTopologyDataset(slide, tile_builder, tissues, trans=transform, max_width=tile_size, max_height=tile_size, overlap=0)
     loader = DataLoader(dataset, num_workers=num_workers)
