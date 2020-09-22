@@ -1,8 +1,8 @@
 import csv
 import os
+from collections import defaultdict
+
 import requests
-from cytomine import Cytomine
-from cytomine.models._utilities import generic_download
 
 
 def split_s3_filename(filename):
@@ -48,60 +48,59 @@ def download(args):
 
 
 def main(argv):
-    with Cytomine.connect_from_cli(argv):
-        download_path = argv[-2]
-        n_jobs = int(argv[-1])
-        os.makedirs(download_path, exist_ok=True)
+    download_path = argv[-2]
+    n_jobs = int(argv[-1])
+    os.makedirs(download_path, exist_ok=True)
 
-        # with open("train_labels.csv") as file:
-        #     reader = csv.DictReader(file, fieldnames=["filename", "0", "1", "2", "3"])
-        #     next(reader)
-        #     file2label = {line['filename']: [i - 1 for i, (k, v) in enumerate(line.items()) if k != "filename" and int(v) == 1][0] for line in reader}
-        #
-        # print(file2label)
-        #
-        # with open("train_annotations_lbzOVuS.csv") as file:
-        #     reader = csv.DictReader(file, fieldnames=["annotation_id", "filename", "geometry", "annotation_class", "us_jpeg_url", "eu_jpeg_url", "asia_jpeg_url"])
-        #     next(reader)
-        #
-        #     lesion_counts = defaultdict(lambda: defaultdict(lambda: 0))
-        #
-        #     urls = list()
-        #     for line in reader:
-        #         cls = int(line["annotation_class"])
-        #         lesion_counts[line["filename"]][cls] += 1
-        #         bucket, url_path = split_s3_filename(line['eu_jpeg_url'])
-        #         dst_path = os.path.join(download_path, str(cls))
-        #         os.makedirs(dst_path, exist_ok=True)
-        #         fname, ext = line['filename'].rsplit(".", 1)
-        #         filename = line['annotation_id'] + "-" + str(file2label[line['filename']]) + "." + ext
-        #         urls.append(("https://" + bucket + ".s3.amazonaws.com/" + url_path, os.path.join(dst_path, filename)))
-        #
-        #     generic_download(urls, download, n_workers=4)
-        #
-        # print(len(file2label), len(lesion_counts))
-        #
-        # for filename, cls in sorted(file2label.items(), key=lambda v: v[1]):
-        #     print(filename[:10], "[{}]".format(cls), " ".join([str(lesion_counts[filename].get(i, ".")) for i in range(4)]))
+    with open("train_labels.csv") as file:
+        reader = csv.DictReader(file, fieldnames=["filename", "0", "1", "2", "3"])
+        next(reader)
+        file2label = {line['filename']: [i - 1 for i, (k, v) in enumerate(line.items()) if k != "filename" and int(v) == 1][0] for line in reader}
 
-        fieldnames = [
-            "filename", "width", "height", "resolution", "magnification", "tif_cksum", "tif_size", "us_wsi_url",
-            "us_tif_url", "us_jpg_url", "eu_wsi_url", "eu_tif_url", "eu_jpg_url", "asia_wsi_url", "asia_tif_url",
-            "asia_jpg_url"
-        ]
-        with open("train_metadata_eRORy1H.csv", "r") as file:
-            reader = csv.DictReader(file, fieldnames=fieldnames)
-            next(reader)
+    print(file2label)
 
-            urls = list()
-            for line in reader:
-                bucket, path = split_s3_filename(line['eu_tif_url'])
-                os.makedirs(download_path, exist_ok=True)
-                filepath = os.path.join(download_path, os.path.basename(line['eu_tif_url']))
-                print(filepath)
-                urls.append(("https://" + bucket + ".s3.amazonaws.com/" + path, filepath))
+    with open("train_annotations_lbzOVuS.csv") as file:
+        reader = csv.DictReader(file, fieldnames=["annotation_id", "filename", "geometry", "annotation_class", "us_jpeg_url", "eu_jpeg_url", "asia_jpeg_url"])
+        next(reader)
 
-            generic_download(urls, download, n_workers=n_jobs)
+        lesion_counts = defaultdict(lambda: defaultdict(lambda: 0))
+
+        urls = list()
+        for line in reader:
+            cls = int(line["annotation_class"])
+            lesion_counts[line["filename"]][cls] += 1
+            bucket, url_path = split_s3_filename(line['eu_jpeg_url'])
+            dst_path = os.path.join(download_path, str(cls))
+            os.makedirs(dst_path, exist_ok=True)
+            fname, ext = line['filename'].rsplit(".", 1)
+            filename = line['annotation_id'] + "." + ext
+            url = "https://" + bucket + ".s3.amazonaws.com/" + url_path
+            dst = os.path.join(dst_path, filename)
+            download_image(url, dst)
+
+    print(len(file2label), len(lesion_counts))
+
+    for filename, cls in sorted(file2label.items(), key=lambda v: v[1]):
+        print(filename[:10], "[{}]".format(cls), " ".join([str(lesion_counts[filename].get(i, ".")) for i in range(4)]))
+    #
+    # fieldnames = [
+    #     "filename", "width", "height", "resolution", "magnification", "tif_cksum", "tif_size", "us_wsi_url",
+    #     "us_tif_url", "us_jpg_url", "eu_wsi_url", "eu_tif_url", "eu_jpg_url", "asia_wsi_url", "asia_tif_url",
+    #     "asia_jpg_url"
+    # ]
+    # with open("train_metadata_eRORy1H.csv", "r") as file:
+    #     reader = csv.DictReader(file, fieldnames=fieldnames)
+    #     next(reader)
+    #
+    #     urls = list()
+    #     for line in reader:
+    #         bucket, path = split_s3_filename(line['eu_tif_url'])
+    #         os.makedirs(download_path, exist_ok=True)
+    #         filepath = os.path.join(download_path, os.path.basename(line['eu_tif_url']))
+    #         print(filepath)
+    #         urls.append(("https://" + bucket + ".s3.amazonaws.com/" + path, filepath))
+    #
+    #     generic_download(urls, download, n_workers=n_jobs)
 
 
 if __name__ == "__main__":
