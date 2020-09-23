@@ -1,3 +1,4 @@
+import math
 import os
 from argparse import ArgumentParser
 
@@ -11,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler
 from torchvision import transforms
 
-from svm_classifier_train import Rescale, group_per_slide, PathDataset, compute_error, compute_slide_score
+from svm_classifier_train import Rescale, group_per_slide, PathDataset, compute_challenge_score, compute_slide_pred
 
 
 def main(argv):
@@ -66,13 +67,26 @@ def main(argv):
     test_dataset = PathDataset(test_data, test_transform)
     train_generator = torch.Generator()
     train_generator.manual_seed(args.random_seed)
-    train_sampler = RandomSampler(train_dataset, replacement=True, generator=train_generator)
+    n_iter_per_epoch = math.ceil(len(train_dataset) / args.batch_size)
+    train_sampler = RandomSampler(train_dataset, num_samples=n_iter_per_epoch, replacement=True, generator=train_generator)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.n_jobs, sampler=train_sampler)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=args.n_jobs)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     class_weight = torch.tensor([1.0, 1.2, 1.4, 1.6]).to(device)
     loss_fn = torch.nn.CrossEntropyLoss(weight=class_weight)
+
+    results = {
+        "train_loss": [],
+        "val_roc": [],
+        "val_acc": [],
+        "val_score": [],
+        "val_cm": [],
+        "val_slide_acc": [],
+        "val_slide_score": [],
+        "val_slide_cm": [],
+        "n_iter_per_epoch": n_iter_per_epoch
+    }
 
     for e in range(args.epochs):
         model.train()
@@ -86,6 +100,7 @@ def main(argv):
             optimizer.step()
             loss_queue = [loss.detach().cpu().item()] + loss_queue[:19]
             print("> {}: {}".format(i + 1, np.mean(loss_queue)))
+            results["train_loss"].append(loss_queue[0])
 
         with torch.no_grad():
             model.eval()
@@ -102,19 +117,36 @@ def main(argv):
             y_pred = np.argmax(probas, axis=1)
 
             print("window:")
-            print("> acc: ", accuracy_score(y_test, y_pred))
-            print("> roc: ", roc_auc_score(y_test, probas, multi_class='ovo'))
-            print("> sco: ", compute_error(y_test, y_pred))
+            val_acc = accuracy_score(y_test, y_pred)
+            val_roc = roc_auc_score(y_test, probas, multi_class='ovo')
+            val_score = compute_challenge_score(y_test, y_pred)
+            val_cm = confusion_matrix(y_test, y_pred)
+            print("> acc: ", val_acc)
+            print("> roc: ", val_roc)
+            print("> sco: ", val_score)
             print("> cm : ")
-            print(confusion_matrix(y_test, y_pred))
+            print(val_cm)
+
             print()
             print("slide: ")
-            slide_true, slide_pred = compute_slide_score(slide2cls, list(zip(*test_data))[0], y_pred)
-            print("> acc: ", accuracy_score(slide_true, slide_pred))
-            print("> sco: ", compute_error(slide_true, slide_pred))
+            slide_true, slide_pred = compute_slide_pred(slide2cls, list(zip(*test_data))[0], y_pred)
+            val_slide_acc = accuracy_score(slide_true, slide_pred)
+            val_slide_score = compute_challenge_score(slide_true, slide_pred)
+            val_slide_cm = confusion_matrix(slide_true, slide_pred)
+            print("> acc: ", val_slide_acc)
+            print("> sco: ", val_slide_score)
             print("> cm : ")
-            print(confusion_matrix(slide_true, slide_pred))
+            print(val_slide_cm)
 
+            results["val_roc"].append(val_roc)
+            results["val_acc"].append(val_acc)
+            results["val_score"].append(val_score)
+            results["val_cm"].append(val_cm)
+            results["val_slide_acc"].append(val_slide_acc)
+            results["val_slide_score"].append(val_slide_score)
+            results["val_slide_cm"].append(val_slide_cm)
+
+    return results
 
 
 
