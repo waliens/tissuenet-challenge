@@ -66,7 +66,7 @@ def group_per_slide(path):
         return list(file2annots.keys()), file2annots, {f: max([cls for cls, _ in v]) for f, v in file2annots.items()}
 
 
-def compute_slide_score(slide2cls, paths, preds):
+def compute_slide_pred(slide2cls, paths, preds):
     """
     :param slides: dict
     :param paths: (n,)
@@ -84,7 +84,7 @@ def compute_slide_score(slide2cls, paths, preds):
     return np.array(y_true), np.array(y_pred)
 
 
-def compute_error(y_true, y_pred):
+def compute_challenge_score(y_true, y_pred):
     error_matrix = np.array([
         [0.0, 0.1, 0.7, 1.0],
         [0.1, 0.0, 0.3, 0.7],
@@ -169,14 +169,14 @@ def main(argv):
 
         print("window:")
         print("> acc: ", accuracy_score(y_test, preds))
-        print("> sco: ", compute_error(y_test, preds))
+        print("> sco: ", compute_challenge_score(y_test, preds))
         print("> cm : ")
         print(confusion_matrix(y_test, preds))
         print()
         print("slide: ")
-        slide_true, slide_pred = compute_slide_score(slide2cls, list(zip(*test_data))[0], preds)
+        slide_true, slide_pred = compute_slide_pred(slide2cls, list(zip(*test_data))[0], preds)
         print("> acc: ", accuracy_score(slide_true, slide_pred))
-        print("> sco: ", compute_error(slide_true, slide_pred))
+        print("> sco: ", compute_challenge_score(slide_true, slide_pred))
         print("> cm : ")
         print(confusion_matrix(slide_true, slide_pred))
 
