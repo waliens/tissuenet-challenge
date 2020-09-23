@@ -36,6 +36,8 @@ def main(argv):
     parser.add_argument("-j", "--n_jobs", dest="n_jobs", default=1, type=int)
     args, _ = parser.parse_known_args(argv)
 
+    print(args)
+
     device = torch.device(args.device)
     features = build_model(arch=args.architecture, pretrained=args.pretrained, pool=True)
     model = SingleHead(features, Head(features.n_features(), n_classes=4))
@@ -68,8 +70,7 @@ def main(argv):
     test_dataset = PathDataset(test_data, test_transform)
     train_generator = torch.Generator()
     train_generator.manual_seed(args.random_seed)
-    n_iter_per_epoch = math.ceil(len(train_dataset) / args.batch_size)
-    train_sampler = RandomSampler(train_dataset, num_samples=n_iter_per_epoch, replacement=True, generator=train_generator)
+    train_sampler = RandomSampler(train_dataset, num_samples=len(train_dataset), replacement=True, generator=train_generator)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.n_jobs, sampler=train_sampler)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=args.n_jobs)
 
@@ -86,7 +87,7 @@ def main(argv):
         "val_slide_acc": [],
         "val_slide_score": [],
         "val_slide_cm": [],
-        "n_iter_per_epoch": n_iter_per_epoch,
+        "n_iter_per_epoch": math.ceil(len(train_dataset) / args.batch_size),
         "models": []
     }
 
@@ -148,10 +149,7 @@ def main(argv):
             results["val_slide_score"].append(val_slide_score)
             results["val_slide_cm"].append(val_slide_cm)
 
-            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(
-                datetime.now().timestamp(), e, val_acc, val_score,
-                args.zoom_level, args.tile_size
-            )
+            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}.pth".format(datetime.now().timestamp(), e, val_acc, val_score, args.zoom_level)
             torch.save(model.state_dict(), os.path.join(args.model_path, filename))
 
             results["models"].append(filename)
