@@ -48,8 +48,13 @@ if __name__ == "__main__":
     param_set.add_parameters(random_seed=42)
     param_set.add_parameters(learning_rate=0.001)
 
+    param_set.add_separator()
+    param_set.add_parameters(zoom_level=[1])
+    param_set.add_parameters(batch_size=[16])
+
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(bsize_zoom=cstrnt_batchsize_zoom)
+
 
     # Wrap it together as an experiment
     experiment = Experiment("tissuenet-e2e-train", constrained, CliComputationFactory(main, **env))
