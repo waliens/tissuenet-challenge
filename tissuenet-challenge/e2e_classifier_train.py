@@ -3,9 +3,9 @@ from argparse import ArgumentParser
 
 import torch
 import numpy as np
-from mtdp import build_model
-from mtdp.networks import SingleHead
-from mtdp.components import Head
+from assets.mtdp import build_model
+from assets.mtdp.networks import SingleHead
+from assets.mtdp.components import Head
 from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler
@@ -21,6 +21,7 @@ def main(argv):
     parser = ArgumentParser()
     parser.add_argument("-i", "--image_path", dest="image_path", default=".")
     parser.add_argument("-m", "--metadata_path", dest="metadata_path", default=".")
+    parser.add_argument("-s", "--model_path", dest="model_path", default=".")
     parser.add_argument("-p", "--pretrained", dest="pretrained", default="imagenet")
     parser.add_argument("-a", "--architecture", dest="architecture", default="densenet121")
     parser.add_argument("-e", "--epochs", dest="epochs", default=5, type=int)
@@ -77,8 +78,6 @@ def main(argv):
         model.train()
         loss_queue = list()
         for i, (x, y) in enumerate(train_loader):
-            if i > 6:
-                break
             x, y = x.to(device), y.to(device)
             out = model.forward(x)
             loss = loss_fn(out, y)
@@ -94,8 +93,6 @@ def main(argv):
             probas = list()
             y_test = list()
             for i, (x_test, y) in enumerate(test_loader):
-                if i > 5:
-                    break
                 out = torch.nn.functional.softmax(model.forward(x_test.to(device)))
                 probas.append(out.detach().cpu().numpy().squeeze())
                 y_test.append(y.cpu().numpy())

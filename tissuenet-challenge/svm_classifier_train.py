@@ -6,7 +6,7 @@ from collections import defaultdict
 import torch
 import numpy as np
 from PIL import Image
-from mtdp import build_model
+from assets.mtdp import build_model
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.svm import LinearSVC
