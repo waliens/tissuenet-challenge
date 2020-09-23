@@ -1,6 +1,7 @@
 import math
 import os
 from argparse import ArgumentParser
+from datetime import datetime
 
 import torch
 import numpy as np
@@ -85,7 +86,8 @@ def main(argv):
         "val_slide_acc": [],
         "val_slide_score": [],
         "val_slide_cm": [],
-        "n_iter_per_epoch": n_iter_per_epoch
+        "n_iter_per_epoch": n_iter_per_epoch,
+        "models": []
     }
 
     for e in range(args.epochs):
@@ -145,6 +147,14 @@ def main(argv):
             results["val_slide_acc"].append(val_slide_acc)
             results["val_slide_score"].append(val_slide_score)
             results["val_slide_cm"].append(val_slide_cm)
+
+            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(
+                datetime.now().timestamp(), e, val_acc, val_score,
+                args.zoom_level, args.tile_size
+            )
+            torch.save(model.state_dict(), os.path.join(args.model_path, filename))
+
+            results["models"].append(filename)
 
     return results
 
