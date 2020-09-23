@@ -108,7 +108,7 @@ def main(argv):
             probas = list()
             y_test = list()
             for i, (x_test, y) in enumerate(test_loader):
-                out = torch.nn.functional.softmax(model.forward(x_test.to(device)))
+                out = torch.nn.functional.softmax(model.forward(x_test.to(device)), dim=1)
                 probas.append(out.detach().cpu().numpy().squeeze())
                 y_test.append(y.cpu().numpy())
 
@@ -149,7 +149,6 @@ def main(argv):
     return results
 
 
-
 if __name__ == "__main__":
     import sys
-    main(sys.argv[1:])
+    print(main(sys.argv[1:]))
