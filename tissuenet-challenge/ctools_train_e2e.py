@@ -39,9 +39,9 @@ if __name__ == "__main__":
     os.makedirs(env["model_path"], exist_ok=True)
 
     param_set = ParameterSet()
-    param_set.add_parameters(pretrained=["imagenet"])
+    param_set.add_parameters(pretrained=["imagenet", "mtdp"])
     param_set.add_parameters(architecture=["densenet121"])
-    param_set.add_parameters(epochs=5)
+    param_set.add_parameters(epochs=20)
     param_set.add_parameters(batch_size=[32])
     param_set.add_parameters(zoom_level=[2])
     param_set.add_parameters(train_size=0.7)
