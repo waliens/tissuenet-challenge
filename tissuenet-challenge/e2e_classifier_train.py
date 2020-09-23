@@ -1,21 +1,15 @@
-import csv
 import os
 from argparse import ArgumentParser
-from collections import defaultdict
 
 import torch
 import numpy as np
-from PIL import Image
 from mtdp import build_model
 from mtdp.networks import SingleHead
 from mtdp.components import Head
 from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sklearn.svm import LinearSVC
 from torch.utils.data import DataLoader, RandomSampler
-from torch.utils.data.dataset import random_split, Dataset
 from torchvision import transforms
-from torchvision.datasets import ImageFolder
 
 from svm_classifier_train import Rescale, group_per_slide, PathDataset, compute_error, compute_slide_score
 
@@ -51,19 +45,18 @@ def main(argv):
     train_slides, test_slides = train_test_split(slidenames, test_size=1 - args.train_size, random_state=random_state)
 
     # transform
-    train_transform = transforms.Compose([
+    post_trans = [
         transforms.Lambda(Rescale(args.zoom_level)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
+    ]
+
+    train_transform = transforms.Compose([
         transforms.RandomVerticalFlip(),
         transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
-    ])
+     ] + post_trans)
 
-    test_transform = transforms.Compose([
-        transforms.Lambda(Rescale(args.zoom_level)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
-    ])
+    test_transform = transforms.Compose(post_trans)
 
     # dataset
     train_data = [(os.path.join(args.image_path, path), cls) for name in train_slides for cls, path in slide2annots[name]]
@@ -103,7 +96,7 @@ def main(argv):
             for i, (x_test, y) in enumerate(test_loader):
                 if i > 5:
                     break
-                out = model.forward(x_test.to(device))
+                out = torch.nn.functional.softmax(model.forward(x_test.to(device)))
                 probas.append(out.detach().cpu().numpy().squeeze())
                 y_test.append(y.cpu().numpy())
 
@@ -113,13 +106,13 @@ def main(argv):
 
             print("window:")
             print("> acc: ", accuracy_score(y_test, y_pred))
-            print("> roc: ", roc_auc_score(y_test, probas))
+            print("> roc: ", roc_auc_score(y_test, probas, multi_class='ovo'))
             print("> sco: ", compute_error(y_test, y_pred))
             print("> cm : ")
             print(confusion_matrix(y_test, y_pred))
             print()
             print("slide: ")
-            slide_true, slide_pred = compute_slide_score(slide2cls, list(zip(*test_data))[0], preds)
+            slide_true, slide_pred = compute_slide_score(slide2cls, list(zip(*test_data))[0], y_pred)
             print("> acc: ", accuracy_score(slide_true, slide_pred))
             print("> sco: ", compute_error(slide_true, slide_pred))
             print("> cm : ")
