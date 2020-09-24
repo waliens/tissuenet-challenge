@@ -14,8 +14,8 @@ def env_parser():
 
 def cstrnt_batchsize_zoom(**kwargs):
     return (kwargs["zoom_level"] == 2 and kwargs["batch_size"] == 32) \
-            or (kwargs["zoom_level"] == 1 and kwargs["batch_size"] == 16) \
-            or (kwargs["zoom_level"] == 0 and kwargs["batch_size"] == 8)
+            or (kwargs["zoom_level"] == 1 and kwargs["batch_size"] == 8) \
+            or (kwargs["zoom_level"] == 0 and kwargs["batch_size"] == 2)
 
 
 if __name__ == "__main__":
@@ -40,21 +40,16 @@ if __name__ == "__main__":
 
     param_set = ParameterSet()
     param_set.add_parameters(pretrained=["imagenet", "mtdp"])
-    param_set.add_parameters(architecture=["densenet121"])
-    param_set.add_parameters(epochs=20)
-    param_set.add_parameters(batch_size=[32])
-    param_set.add_parameters(zoom_level=[2])
+    param_set.add_parameters(architecture=["densenet121", "resnet50"])
+    param_set.add_parameters(epochs=40)
+    param_set.add_parameters(batch_size=[32, 8])
+    param_set.add_parameters(zoom_level=[2, 1])
     param_set.add_parameters(train_size=0.7)
     param_set.add_parameters(random_seed=42)
-    param_set.add_parameters(learning_rate=0.001)
-
-    param_set.add_separator()
-    param_set.add_parameters(zoom_level=[1])
-    param_set.add_parameters(batch_size=[16])
+    param_set.add_parameters(learning_rate=[0.001, 0.0001])
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(bsize_zoom=cstrnt_batchsize_zoom)
-
 
     # Wrap it together as an experiment
     experiment = Experiment("tissuenet-e2e-train", constrained, CliComputationFactory(main, **env))

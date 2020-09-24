@@ -136,9 +136,9 @@ def main(argv):
             val_slide_acc = accuracy_score(slide_true, slide_pred)
             val_slide_score = compute_challenge_score(slide_true, slide_pred)
             val_slide_cm = confusion_matrix(slide_true, slide_pred)
-            print("> acc: ", val_slide_acc)
-            print("> sco: ", val_slide_score)
-            print("> cm : ")
+            print("> slide acc: ", val_slide_acc)
+            print("> slide sco: ", val_slide_score)
+            print("> slide cm : ")
             print(val_slide_cm)
 
             results["val_roc"].append(val_roc)
@@ -149,7 +149,7 @@ def main(argv):
             results["val_slide_score"].append(val_slide_score)
             results["val_slide_cm"].append(val_slide_cm)
 
-            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}.pth".format(datetime.now().timestamp(), e, val_acc, val_score, args.zoom_level)
+            filename = "{}_{}_e_{}_val_{:0.4f}_sco_{:0.4f}_z{}_{}.pth".format(args.architecture, args.pretrained, e, val_acc, val_score, args.zoom_level, datetime.now().timestamp())
             torch.save(model.state_dict(), os.path.join(args.model_path, filename))
 
             results["models"].append(filename)
