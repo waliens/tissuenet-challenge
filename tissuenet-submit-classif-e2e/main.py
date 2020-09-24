@@ -38,7 +38,9 @@ def main(argv):
     ZOOM_LEVEL = 2
     N_CLASSES = 4
     TILE_SIZE = 320
-    MODEL_PATH = os.path.join("assets", ".pth")
+    TILE_OVERLAP = 0
+    BATCH_SIZE = 16
+    MODEL_PATH = os.path.join("assets", "densenet121_imagenet_e_0_val_0.7435_sco_0.9254_z1_1600947829.144045.pth")
 
     trans = [
         transforms.ToTensor(),
@@ -56,7 +58,9 @@ def main(argv):
             model=model,
             device=device,
             transform=trans,
+            batch_size=BATCH_SIZE,
             tile_size=TILE_SIZE,
+            tile_overlap=TILE_OVERLAP,
             num_workers=args.n_jobs - 1,
             zoom_level=ZOOM_LEVEL,
             n_classes=N_CLASSES

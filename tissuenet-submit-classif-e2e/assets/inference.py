@@ -11,6 +11,7 @@ from torch.utils.data.dataset import Dataset
 from assets.sldc.locator import mask_to_objects_2d
 from assets.sldc_pyvips.adapter import PyVipsTileBuilder, PyVipsSlide
 
+
 class ExcludingEmptySlideDataset(Dataset):
     """A slide + a polygon : only provide images of tiles that intersects with the polygon."""
     def __init__(self, topology, tissue_poly, trans=None):
@@ -121,7 +122,7 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, threshold=205, morp
     ], (height, width), zoom_level
 
 
-def classify(slide_path, model, device, transform, tile_size, num_workers=0, zoom_level=2, n_classes=4, fg_detect_rescale_to=2048):
+def classify(slide_path, model, device, transform, batch_size=16, tile_size=512, tile_overlap=0, num_workers=0, zoom_level=2, n_classes=4, fg_detect_rescale_to=2048):
     # preprocessing
     tissues, _, extract_zoom_level = foreground_detect(slide_path, fg_detect_rescale_to=fg_detect_rescale_to)
     zoom_ratio = 2 ** (extract_zoom_level - zoom_level)
@@ -130,8 +131,9 @@ def classify(slide_path, model, device, transform, tile_size, num_workers=0, zoo
     # inference
     slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
     tile_builder = PyVipsTileBuilder(slide)
-    dataset = MultiPolygonFilteredTopologyDataset(slide, tile_builder, tissues, trans=transform, max_width=tile_size, max_height=tile_size, overlap=0)
-    loader = DataLoader(dataset, num_workers=num_workers)
+    dataset = MultiPolygonFilteredTopologyDataset(
+        slide, tile_builder, tissues, trans=transform, max_width=tile_size, max_height=tile_size, overlap=tile_overlap)
+    loader = DataLoader(dataset, num_workers=num_workers, batch_size=batch_size)
 
     probas = np.zeros([len(dataset), n_classes])
     index = 0
