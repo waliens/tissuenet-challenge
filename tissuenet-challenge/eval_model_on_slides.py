@@ -84,7 +84,7 @@ def main(argv):
                 zoom_level=ZOOM_LEVEL,
                 n_classes=N_CLASSES
             )
-            print("{} - {:3.2f}%".format(filename, 100 * (i + 1) / test_slides))
+            print("{} - {:3.2f}%".format(filename, 100 * (i + 1) / len(test_slides)))
             y_pred.append(pred)
             y_true.append(slide2cls[filename])
 
