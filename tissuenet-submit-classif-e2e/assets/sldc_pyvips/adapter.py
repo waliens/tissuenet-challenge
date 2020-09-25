@@ -38,12 +38,13 @@ class PyVipsTile(Tile):
         super().__init__(*args, **kwargs)
         self._region = region
 
+    @property
     def np_image(self):
         region = self._region.fetch(self.abs_offset_x, self.abs_offset_y, self.width, self.height)
         return np.ndarray(
-            buffer=region.write_to_memory(),
+            buffer=region,
             dtype=np.uint8,
-            shape=(region.height, region.width, region.bands)
+            shape=(self.height, self.width, self.channels)
         )
 
 

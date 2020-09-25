@@ -8,6 +8,7 @@ from shapely.geometry import box
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 
+from assets.sldc.image import FixedSizeTileTopology
 from assets.sldc.locator import mask_to_objects_2d
 from assets.sldc_pyvips.adapter import PyVipsTileBuilder, PyVipsSlide
 
@@ -58,6 +59,7 @@ class MultiPolygonFilteredTopologyDataset(Dataset):
     def __init__(self, slide, builder, tissues, trans=None, max_width=512, max_height=512, overlap=0):
         self._tissues = tissues
         self._topologies = [slide.window_from_polygon(tissue).tile_topology(builder, max_width=max_width, max_height=max_height, overlap=overlap) for tissue in tissues]
+        self._topologies = [FixedSizeTileTopology(t) for t in self._topologies]
         self._datasets = [ExcludingEmptySlideDataset(topology, tissue, trans=trans) for topology, tissue in zip(self._topologies, tissues)]
         self._sizes, self._cumsum_sizes = datasets_size_cumsum(self._datasets)
 
@@ -115,18 +117,36 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, threshold=205, morp
 
     # Only keep components greater than 2.5% of whole image
     min_area = int(area_ratio * width * height / 100)
+    filtered = [p for p, _ in objects if p.area > min_area]
+
+    if len(filtered) == 0:
+        return []
+
+    # merge intersecting polygons
+    to_check_for_merge = list(filtered)
+    checked_for_merge = list()
+    while len(to_check_for_merge) > 0:
+        poly = to_check_for_merge.pop(0)
+        merged = False
+        for i in range(len(to_check_for_merge)):
+            if poly.intersects(to_check_for_merge[i]):
+                to_check_for_merge[i] = to_check_for_merge[i].union(poly)
+                merged = True
+                break
+        if not merged:
+            checked_for_merge.append(poly)
+
     return [
-      affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
-      for p, _ in objects
-      if p.area > min_area
+       affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
+       for p in checked_for_merge
     ], (height, width), zoom_level
 
 
 def classify(slide_path, model, device, transform, batch_size=16, tile_size=512, tile_overlap=0, num_workers=0, zoom_level=2, n_classes=4, fg_detect_rescale_to=2048):
     # preprocessing
     tissues, _, extract_zoom_level = foreground_detect(slide_path, fg_detect_rescale_to=fg_detect_rescale_to)
-    zoom_ratio = 2 ** (extract_zoom_level - zoom_level)
-    tissues = [affine_transform(p, [zoom_ratio, 0, 0, zoom_ratio]) for p in tissues]
+    zoom_ratio = 2 ** zoom_level
+    tissues = [affine_transform(p, [1 / zoom_ratio, 0, 0, 1 / zoom_ratio, 0, 0]) for p in tissues]
 
     # inference
     slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
@@ -135,12 +155,19 @@ def classify(slide_path, model, device, transform, batch_size=16, tile_size=512,
         slide, tile_builder, tissues, trans=transform, max_width=tile_size, max_height=tile_size, overlap=tile_overlap)
     loader = DataLoader(dataset, num_workers=num_workers, batch_size=batch_size)
 
+    print("--- {} ---".format(slide_path))
+    print("Number of areas to process: {}".format(len(tissues)))
+    print("Number of tiles to process: {}".format(len(dataset)))
+
     probas = np.zeros([len(dataset), n_classes])
     index = 0
     for _, tiles in loader:
+        tiles = tiles.to(device)
         n_samples = int(tiles.size(0))
-        probas[index:(index+n_samples)] = torch.nn.functional.softmax(model.forward(tiles.to(device)), dim=1)
+        probas[index:(index+n_samples)] = torch.nn.functional.softmax(model.forward(tiles), dim=1).detach().cpu().numpy()
         index += n_samples
 
     classes = np.argmax(probas, axis=1)
+    print("class_dict: {}".format({v: c for v, c in zip(*np.unique(classes, return_counts=True))}))
+    print(">> predicting: {}".format(np.max(classes)))
     return np.max(classes)
