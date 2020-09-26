@@ -39,7 +39,7 @@ def main(argv):
     N_CLASSES = 4
     TILE_SIZE = 320
     TILE_OVERLAP = 0
-    BATCH_SIZE = 16
+    BATCH_SIZE = 32
     ARCH = "densenet121"
     MODEL_PATH = os.path.join("assets", "densenet121_mtdp_e_10_val_0.8000_sco_0.9464_z2_1600972592.605832.pth")
 
@@ -57,21 +57,31 @@ def main(argv):
     model.to(device)
 
     results = {}
-    for filename in read_test_files():
-        with torch.no_grad():
-            results[filename] = classify(
-                slide_path=os.path.join("data", filename),
-                model=model,
-                device=device,
-                transform=trans,
-                batch_size=BATCH_SIZE,
-                tile_size=TILE_SIZE,
-                tile_overlap=TILE_OVERLAP,
-                num_workers=args.n_jobs - 1,
-                zoom_level=ZOOM_LEVEL,
-                n_classes=N_CLASSES
-            )
+    test_files = read_test_files()
+    print("Total of {} file(s) to process.".format(len(test_files)))
+    for i, filename in enumerate(test_files):
+        slide_path = os.path.join("data", filename)
+        print("--- {} ---".format(slide_path))
+        try:
+            with torch.no_grad():
+                results[filename] = classify(
+                    slide_path=slide_path,
+                    model=model,
+                    device=device,
+                    transform=trans,
+                    batch_size=BATCH_SIZE,
+                    tile_size=TILE_SIZE,
+                    tile_overlap=TILE_OVERLAP,
+                    num_workers=args.n_jobs - 1,
+                    zoom_level=ZOOM_LEVEL,
+                    n_classes=N_CLASSES
+                )
 
+        except Exception as e:
+            print("/!\\ error during prediction {}".format(str(e)))
+            print("/!\\ ... predicting 0")
+            results[filename] = 0
+        print("-> {:3.2f}% - {} / {}".format(100 * (i + 1) / len(test_files), i + 1, len(test_files)))
     write_submission(results)
 
 

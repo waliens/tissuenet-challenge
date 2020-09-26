@@ -1,6 +1,8 @@
+import os
 import numpy as np
 import pyvips
 import torch
+import timeit
 from PIL import Image
 import cv2
 from skimage.filters import threshold_otsu
@@ -12,6 +14,25 @@ from torch.utils.data.dataset import Dataset
 from assets.sldc.image import FixedSizeTileTopology
 from assets.sldc.locator import mask_to_objects_2d
 from assets.sldc_pyvips.adapter import PyVipsTileBuilder, PyVipsSlide
+
+
+class TimingContextManager(object):
+    def __init__(self):
+        """A context manager for computing a duration for a given phase"""
+        self._start = None
+        self._end = None
+
+    def __enter__(self):
+        self._end = None
+        self._start = timeit.default_timer()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._end = timeit.default_timer()
+
+    @property
+    def duration(self):
+        return 0 if self._start is None or self._end is None else self._end - self._start
+
 
 
 def check_tile_poly_intersection(tile, polygon):
@@ -97,13 +118,11 @@ class VariationFilteredTopologyDataset(Dataset):
         self._std = std
 
 
-
-
 def get_image_meta(path):
     """
     n-pages, (height, width)
     """
-    image = pyvips.Image.new_from_file(path)
+    image = pyvips.Image.new_from_file(path, page=0)
     return image.get("n-pages"), (image.height, image.width)
 
 
@@ -184,14 +203,18 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, morph_iter=3, area_
 
 def classify(slide_path, model, device, transform, batch_size=16, tile_size=512, tile_overlap=0, num_workers=0, zoom_level=2, n_classes=4, fg_detect_rescale_to=2048):
     # preprocessing
-    tissues = foreground_detect(slide_path, fg_detect_rescale_to=fg_detect_rescale_to)
-    zoom_ratio = 2 ** zoom_level
-    tissues = [affine_transform(p, [1 / zoom_ratio, 0, 0, 1 / zoom_ratio, 0, 0]) for p in tissues]
+    fg_detect_timer = TimingContextManager()
+    slide_predict_timer = TimingContextManager()
+
+    with fg_detect_timer:
+        tissues = foreground_detect(slide_path, fg_detect_rescale_to=fg_detect_rescale_to)
+        zoom_ratio = 2 ** zoom_level
+        tissues = [affine_transform(p, [1 / zoom_ratio, 0, 0, 1 / zoom_ratio, 0, 0]) for p in tissues]
 
     if len(tissues) == 0:
-        raise ValueError("no poly for slide '{}'".format(slide_path))
+        print("no poly for slide '{}' ... return class 0.".format(os.path.basename(slide_path)))
+        return 0
 
-    print("--- {} ---".format(slide_path))
     slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
     tile_builder = PyVipsTileBuilder(slide)
     dataset = MultiPolygonFilteredTopologyDataset(
@@ -201,18 +224,24 @@ def classify(slide_path, model, device, transform, batch_size=16, tile_size=512,
     # inference
     loader = DataLoader(dataset, num_workers=num_workers, batch_size=batch_size)
 
+    print("Size at zoom level {}  : {} x {}".format(zoom_level, slide.height, slide.width))
+    print("Size at max zoom level : {} x {}".format(slide.height * (2 ** zoom_level), slide.width * (2 ** zoom_level)))
     print("Number of areas to process: {}".format(len(tissues)))
     print("Number of tiles to process: {}".format(len(dataset)))
+    with slide_predict_timer:
+        probas = np.zeros([len(dataset), n_classes])
+        index = 0
+        for _, tiles in loader:
+            tiles = tiles.to(device)
+            n_samples = int(tiles.size(0))
+            probas[index:(index+n_samples)] = torch.nn.functional.softmax(model.forward(tiles), dim=1).detach().cpu().numpy()
+            index += n_samples
 
-    probas = np.zeros([len(dataset), n_classes])
-    index = 0
-    for _, tiles in loader:
-        tiles = tiles.to(device)
-        n_samples = int(tiles.size(0))
-        probas[index:(index+n_samples)] = torch.nn.functional.softmax(model.forward(tiles), dim=1).detach().cpu().numpy()
-        index += n_samples
-
-    classes = np.argmax(probas, axis=1)
+        classes = np.argmax(probas, axis=1)
     print("class_dict: {}".format({v: c for v, c in zip(*np.unique(classes, return_counts=True))}))
+    print("durations:")
+    print("> fg_det: {:0.4f}s".format(fg_detect_timer.duration))
+    print("> sl_pre: {:0.4f}s".format(slide_predict_timer.duration))
     print(">> predicting: {}".format(np.max(classes)))
-    return np.max(classes)
+
+    return int(np.max(classes))
