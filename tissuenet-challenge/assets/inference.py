@@ -1,3 +1,4 @@
+import bisect
 import os
 import numpy as np
 import pyvips
@@ -34,7 +35,6 @@ class TimingContextManager(object):
         return 0 if self._start is None or self._end is None else self._end - self._start
 
 
-
 def check_tile_poly_intersection(tile, polygon):
     """A slide + a polygon : only provide images of tiles that intersects with the polygon."""
     x, y = tile.abs_offset
@@ -63,11 +63,16 @@ class TileExclusionDataset(Dataset):
                 filtered2full_ids.append(tile.identifier)
         return filtered2full_ids
 
+    def tile(self, index):
+        identifier = self._filtered_identifiers[index]
+        return self._topology.tile(identifier)
+
     def __getitem__(self, item):
-        image = Image.fromarray(self._topology.tile(self._filtered_identifiers[item]).np_image)
+        tile = self._topology.tile(self._filtered_identifiers[item])
+        image = Image.fromarray(tile.np_image)
         if self._trans is not None:
             image = self._trans(image)
-        return item + 1, image
+        return image
 
     def __len__(self):
         return len(self._filtered_identifiers)
@@ -106,16 +111,14 @@ class MultiPolygonFilteredTopologyDataset(Dataset):
 
     def __getitem__(self, index):
         dataset_index, relative_index = get_sample_indexes(index, self._cumsum_sizes)
-        return self._datasets[dataset_index][relative_index]
+        return index, self._datasets[dataset_index][relative_index]
 
     def __len__(self):
         return self._cumsum_sizes[-1] + len(self._datasets[-1])
 
-
-class VariationFilteredTopologyDataset(Dataset):
-    def __init__(self, slide, builder, mean=210, std=5, max_width=512, max_height=512, overlap=0):
-        self._mean = mean
-        self._std = std
+    def tile(self, index):
+        dataset_index, relative_index = get_sample_indexes(index, self._cumsum_sizes)
+        return self._datasets[dataset_index].tile(relative_index)
 
 
 def get_image_meta(path):
@@ -204,6 +207,7 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, morph_iter=3, area_
 def classify(slide_path, model, device, transform, batch_size=16, tile_size=512, tile_overlap=0, num_workers=0, zoom_level=2, n_classes=4, fg_detect_rescale_to=2048):
     # preprocessing
     fg_detect_timer = TimingContextManager()
+    dataset_construct_timer = TimingContextManager()
     slide_predict_timer = TimingContextManager()
 
     with fg_detect_timer:
@@ -213,35 +217,42 @@ def classify(slide_path, model, device, transform, batch_size=16, tile_size=512,
 
     if len(tissues) == 0:
         print("no poly for slide '{}' ... return class 0.".format(os.path.basename(slide_path)))
-        return 0
+        slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
+        tile_builder = PyVipsTileBuilder(slide)
+        tile = slide.tile(tile_builder, offset=(0, 0), max_width=slide.width, max_height=slide.height)
+        return {0: 1}, [tile], np.array([[1, 0, 0, 0]])
 
-    slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
-    tile_builder = PyVipsTileBuilder(slide)
-    dataset = MultiPolygonFilteredTopologyDataset(
-        slide, tile_builder, tissues, trans=transform, max_width=tile_size, max_height=tile_size,
-        overlap=tile_overlap)
+    with dataset_construct_timer:
+        slide = PyVipsSlide(slide_path, zoom_level=zoom_level)
+        tile_builder = PyVipsTileBuilder(slide)
+        dataset = MultiPolygonFilteredTopologyDataset(
+            slide, tile_builder, tissues, trans=transform, max_width=tile_size, max_height=tile_size,
+            overlap=tile_overlap)
 
-    # inference
-    loader = DataLoader(dataset, num_workers=num_workers, batch_size=batch_size)
+        # inference
+        loader = DataLoader(dataset, num_workers=num_workers, batch_size=batch_size)
 
     print("Size at zoom level {}  : {} x {}".format(zoom_level, slide.height, slide.width))
     print("Size at max zoom level : {} x {}".format(slide.height * (2 ** zoom_level), slide.width * (2 ** zoom_level)))
     print("Number of areas to process: {}".format(len(tissues)))
     print("Number of tiles to process: {}".format(len(dataset)))
+    probas = np.zeros([len(dataset), n_classes], dtype=np.float)
+    tiles = list()
     with slide_predict_timer:
-        probas = np.zeros([len(dataset), n_classes])
         index = 0
-        for _, tiles in loader:
-            tiles = tiles.to(device)
-            n_samples = int(tiles.size(0))
-            probas[index:(index+n_samples)] = torch.nn.functional.softmax(model.forward(tiles), dim=1).detach().cpu().numpy()
+        for indexes, x in loader:
+            x = x.to(device)
+            n_samples = int(x.size(0))
+            probas[index:(index+n_samples)] = torch.nn.functional.softmax(model.forward(x), dim=1).detach().cpu().numpy()
             index += n_samples
+            tiles.extend([dataset.tile(index) for index in indexes])
 
         classes = np.argmax(probas, axis=1)
-    print("class_dict: {}".format({v: c for v, c in zip(*np.unique(classes, return_counts=True))}))
+        cls_dict = {v: c for v, c in zip(*np.unique(classes, return_counts=True))}
+    print("class_dict: {}".format(cls_dict))
     print("durations:")
     print("> fg_det: {:0.4f}s".format(fg_detect_timer.duration))
+    print("> dt_con: {:0.4f}s".format(dataset_construct_timer.duration))
     print("> sl_pre: {:0.4f}s".format(slide_predict_timer.duration))
-    print(">> predicting: {}".format(np.max(classes)))
 
-    return int(np.max(classes))
+    return cls_dict, tiles, probas
