@@ -45,7 +45,7 @@ def main(argv):
     slidenames, slide2annots, slide2cls = group_per_slide(args.metadata_path)
 
     random_state = np.random.RandomState(args.random_seed)
-    _, test_slides = train_test_split(slidenames, test_size=1 - args.train_size, random_state=random_state)
+    _, slides = train_test_split(slidenames, test_size=1 - args.train_size, random_state=random_state)
 
     ZOOM_LEVEL = 2
     N_CLASSES = 4
@@ -69,13 +69,14 @@ def main(argv):
     model.to(device)
 
     y_pred, y_true = list(), list()
-    print("{} slide(s) to process".format(len(test_slides)))
-    for i, filename in enumerate(test_slides):
+    print("{} slide(s) to process".format(len(slides)))
+    probas, tiles, filenames = list(), list(), list()
+    for i, filename in enumerate(slides):
         slide_path = os.path.join(args.image_path, filename)
         print("--- {} ---".format(slide_path))
         try:
             with torch.no_grad():
-                pred = classify(
+                cls_dict, slide_tiles, slide_probas = classify(
                     slide_path=slide_path,
                     model=model,
                     device=device,
@@ -87,24 +88,40 @@ def main(argv):
                     zoom_level=ZOOM_LEVEL,
                     n_classes=N_CLASSES
                 )
-
+                probas.append(slide_probas)
+                tiles.extend(slide_tiles)
+                filenames.extend([filename for _ in range(len(slide_tiles))])
         except Exception as e:
             print("/!\\ error during prediction {}".format(str(e)))
             print("/!\\ ... predicting 0")
             pred = 0
-        y_pred.append(pred)
-        y_true.append(slide2cls[filename])
-        print("-> {:3.2f}% - {} / {}".format(100 * (i + 1) / len(test_slides), i + 1, len(test_slides)))
 
-    print()
-    print("slide: ")
-    val_slide_acc = accuracy_score(y_true, y_pred)
-    val_slide_score = compute_challenge_score(y_true, y_pred)
-    val_slide_cm = confusion_matrix(y_true, y_pred)
-    print("> slide acc: ", val_slide_acc)
-    print("> slide sco: ", val_slide_score)
-    print("> slide cm : ")
-    print(val_slide_cm)
+        print("-> {:3.2f}% - {} / {}".format(100 * (i + 1) / len(slides), i + 1, len(slides)))
+
+    probas = np.vstack(probas)
+
+    with open("results.csv", "w+") as file:
+        writer = csv.DictWriter(file, fieldnames=["filename", "tilex", "tiley", "tilew", "tileh", "p0", "p1", "p2", "p3"], delimiter=",")
+        writer.writeheader()
+        for filename, tile, proba_row in zip(filenames, tiles, probas):
+            writer.writerow({
+                "filename": filename,
+                "tilex": tile.abs_offset_x,
+                "tiley": tile.abs_offset_y,
+                "tileh": tile.height,
+                "tilew": tile.width,
+                **{"p{}".format(i): float(p) for i, p in enumerate(proba_row)}
+            })
+
+    # print()
+    # print("slide: ")
+    # val_slide_acc = accuracy_score(y_true, y_pred)
+    # val_slide_score = compute_challenge_score(y_true, y_pred)
+    # val_slide_cm = confusion_matrix(y_true, y_pred)
+    # print("> slide acc: ", val_slide_acc)
+    # print("> slide sco: ", val_slide_score)
+    # print("> slide cm : ")
+    # print(val_slide_cm)
 
 
 if __name__ == "__main__":
