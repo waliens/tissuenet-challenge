@@ -79,7 +79,7 @@ def main():
     x_train, y_train = get_dataset_cls_dict(train_slides, cls_dict, slide2cls)
     x_test, y_test = get_dataset_cls_dict(test_slides, cls_dict, slide2cls)
 
-    rf = RandomForestClassifier(n_estimators=100, max_features=None, random_state=RandomState(42))
+    rf = RandomForestClassifier(n_estimators=1000, max_features=None, random_state=RandomState(42))
     param_grid = {"min_samples_leaf": [1, 25, 50, 100, 250, 500]}
     folder = KFold(n_splits=5)
     grid = GridSearchCV(rf, param_grid, scoring=make_scorer(compute_challenge_score), n_jobs=4, verbose=10, refit=True, cv=folder)
@@ -87,6 +87,7 @@ def main():
     print("best_params:", grid.best_params_)
     print("best_score:", grid.best_score_)
     print_eval(y_test, grid.best_estimator_.predict(x_test))
+
 
 if __name__ == "__main__":
     main()
