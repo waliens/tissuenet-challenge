@@ -13,9 +13,15 @@ def env_parser():
 
 
 def cstrnt_batchsize_zoom(**kwargs):
-    return (kwargs["zoom_level"] == 2 and kwargs["batch_size"] == 32) \
-            or (kwargs["zoom_level"] == 1 and kwargs["batch_size"] == 8) \
-            or (kwargs["zoom_level"] == 0 and kwargs["batch_size"] == 2)
+    zlevel = kwargs["zoom_level"]
+    bsize = kwargs["batch_size"]
+    arch = kwargs["architecture"]
+    return (arch in {"densenet121", "resnet50"} and (zlevel, bsize) in {(2, 32), (1, 8), (0, 2)}) or \
+           (arch in {"resnet34", "resnet18"} and (zlevel, bsize) in {(2, 32), (1, 16), (0, 4)})
+
+
+def cstrnt_pretraining(**kwargs):
+    return kwargs["architecture"] in {"resnet50", "densenet121"} or kwargs["pretrained"] == "imagenet"
 
 
 if __name__ == "__main__":
@@ -40,19 +46,20 @@ if __name__ == "__main__":
 
     param_set = ParameterSet()
     param_set.add_parameters(pretrained=["imagenet", "mtdp"])
-    param_set.add_parameters(architecture=["densenet121", "resnet50"])
-    param_set.add_parameters(epochs=40)
-    param_set.add_parameters(batch_size=[32, 8])
+    param_set.add_parameters(architecture=["densenet121", "resnet50", "resnet18", "resnet34"])
+    param_set.add_parameters(epochs=60)
+    param_set.add_parameters(batch_size=[32, 16, 8])
     param_set.add_parameters(zoom_level=[2, 1])
-    param_set.add_parameters(train_size=0.7)
+    param_set.add_parameters(train_size=0.8)
     param_set.add_parameters(random_seed=42)
     param_set.add_parameters(learning_rate=[0.001, 0.0001])
 
     constrained = ConstrainedParameterSet(param_set)
-    constrained.add_constraints(bsize_zoom=cstrnt_batchsize_zoom)
+    constrained.add_constraints(bsize_zoom_arch=cstrnt_batchsize_zoom)
+    constrained.add_constraints(arch_pretr=cstrnt_pretraining)
 
     # Wrap it together as an experiment
-    experiment = Experiment("tissuenet-e2e-train", constrained, CliComputationFactory(main, **env))
+    experiment = Experiment("tissuenet-e2e-train-2nd", constrained, CliComputationFactory(main, **env))
 
     # Finally run the experiment
     environment.run(experiment)
