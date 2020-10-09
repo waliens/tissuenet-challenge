@@ -49,9 +49,37 @@ if __name__ == "__main__":
             best_score = np.max(val_acc)
             best_epoch = np.argmax(val_acc)
 
-    print("best", best_comb)
-    print("score", best_score)
-    print("best_epoch", best_epoch)
+    for (arch, pre, lr), cube in datacube.iter_dimensions("architecture", "pretrained", "learning_rate"):
+        plt.figure()
+        plt.title("{} {} {}".format(arch, pre, lr))
+        min_curve = 1
+        for (zoom, bs), zoom_cube in cube.iter_dimensions("zoom_level", "batch_size"):
+            if zoom_cube("val_roc") is None:
+                continue
+            val_acc = zoom_cube("val_acc")
+            x_val = np.arange(0, len(val_acc)) + 1
+            plt.plot(x_val, val_acc, label=zoom + " (best: {:0.4f})".format(np.max(val_acc)))
+            min_curve = min(np.min(val_acc), min_curve)
+        plt.legend()
+        plt.ylabel("acc")
+        plt.ylim(0.9 * min_curve, 1)
+        plt.savefig(os.path.join(plot_path, "zoom_{}_{}_{}.png".format(arch, pre, lr)), dpi=300)
+        plt.close()
+
+    for (lr, ), cube in datacube(zoom_level='2', batch_size='32').iter_dimensions("learning_rate"):
+        plt.figure()
+        plt.title("{} zoom=2".format(lr))
+        min_curve = 1
+        for (arch, pre), arch_cube in cube.iter_dimensions("architecture", "pretrained"):
+            val_acc = arch_cube("val_acc")
+            x_val = np.arange(0, len(val_acc)) + 1
+            plt.plot(x_val, val_acc, label="{} - {} (best: {:0.4f})".format(arch, pre, np.max(val_acc)))
+            min_curve = min(np.min(val_acc), min_curve)
+        plt.legend()
+        plt.ylabel("acc")
+        plt.ylim(0.9 * min_curve, 1)
+        plt.savefig(os.path.join(plot_path, "arch_z2_{}.png".format(lr)), dpi=300)
+        plt.close()
 
     for (lr, ), lr_cube in datacube.iter_dimensions("learning_rate"):
         plt.figure()

@@ -1,6 +1,7 @@
 import csv
 import os
 import pickle
+from shutil import copyfile
 
 import numpy as np
 from collections import defaultdict
@@ -28,6 +29,7 @@ def get_results(path):
 
         per_filename = defaultdict(list)
         class_dct = defaultdict(lambda: defaultdict(lambda: 0))
+        probas_dict = defaultdict(lambda: np.zeros([4], dtype=np.float))
 
         for row in reader:
             row_probas = np.array([float(row["p0"]), float(row["p1"]), float(row["p2"]), float(row["p3"])])
@@ -37,17 +39,30 @@ def get_results(path):
 
             pred = np.argmax(row_probas)
             class_dct[row['filename']][pred] += 1
+            probas_dict[row['filename']] += row_probas
 
-        return per_filename, class_dct
+        return per_filename, class_dct, probas_dict
 
 
-def get_dataset_cls_dict(slides, cls_dict, slide2cls):
+def get_dataset_cls_dict(slides, cls_dict, slide2cls, norm=False):
     x = np.zeros([len(slides), 4], dtype=np.int)
     y = np.zeros([len(slides)], dtype=np.int)
     for i, slide in enumerate(slides):
         x[i] = np.array([cls_dict[slide][cls] for cls in range(4)])
         y[i] = slide2cls[slide]
-    # x = x / np.sum(x, axis=1, keepdims=True)
+    if norm:
+        x = x / np.sum(x, axis=1, keepdims=True)
+    return x, y
+
+
+def get_dataset_probas_dict(slides, probas_dict, slide2cls, norm=False):
+    x = np.zeros([len(slides), 4], dtype=np.float)
+    y = np.zeros([len(slides)], dtype=np.int)
+    for i, slide in enumerate(slides):
+        x[i] = probas_dict[slide]
+        y[i] = slide2cls[slide]
+    if norm:
+        x = x / np.sum(x, axis=1, keepdims=True)
     return x, y
 
 
@@ -112,10 +127,25 @@ def draw_pred_on_slide(slide_path, preds, value_fn, color_fn, opacity=127, size=
     return pil_slide, img.convert("RGB")
 
 
+def move_samples(mask, y_true, y_pred, slides, src_path, dst_folder):
+    names = slides[mask]
+    dst_path = os.path.join(src_path, dst_folder)
+    for i, filename in enumerate(names):
+        name = filename.rsplit(".", 1)[0]
+        raw_filename = name + ".png"
+        pred_filename = name + "_pred.png"
+
+        dst_raw = os.path.join(dst_path, str(y_true[mask][i]), "{}_".format(y_pred[mask][i]) + raw_filename)
+        dst_pred = os.path.join(dst_path, str(y_true[mask][i]), "{}_".format(y_pred[mask][i]) + pred_filename)
+        os.makedirs(os.path.dirname(dst_raw), exist_ok=True)
+        copyfile(os.path.join(src_path, raw_filename), dst_raw)
+        copyfile(os.path.join(src_path, pred_filename), dst_pred)
+
+
 def main():
     slidenames, slide2annots, slide2cls = group_per_slide("/scratch/users/rmormont/tissuenet/metadata/")
 
-    per_filename, cls_dict = get_results("results.csv")
+    per_filename, cls_dict, probas_dict = get_results("results.csv")
 
     RANDOM_SEED = 42
     TRAIN_SIZE = 0.7
@@ -126,23 +156,30 @@ def main():
 
     eval_max_rank(test_slides, cls_dict, slide2cls)
 
-    x_train, y_train = get_dataset_cls_dict(train_slides, cls_dict, slide2cls)
-    x_test, y_test = get_dataset_cls_dict(test_slides, cls_dict, slide2cls)
+    x_train, y_train = get_dataset_probas_dict(train_slides, probas_dict, slide2cls, norm=False)
+    x_test, y_test = get_dataset_probas_dict(test_slides, probas_dict, slide2cls, norm=False)
 
     rf = RandomForestClassifier(n_estimators=1000, max_features=None, random_state=RandomState(42))
     param_grid = {"min_samples_leaf": [1, 25, 50, 100, 250, 500]}
     folder = KFold(n_splits=5)
-    grid = GridSearchCV(rf, param_grid, scoring=make_scorer(compute_challenge_score), n_jobs=4, verbose=10, refit=True, cv=folder)
+    grid = GridSearchCV(rf, param_grid, scoring=make_scorer(compute_challenge_score), n_jobs=N_JOBS, verbose=10, refit=True, cv=folder)
     grid.fit(x_train, y_train)
     print("best_params:", grid.best_params_)
     print("best_score:", grid.best_score_)
-    print_eval(y_test, grid.best_estimator_.predict(x_test))
+    y_pred = grid.best_estimator_.predict(x_test)
+    print_eval(y_test, y_pred)
 
-    rf.set_params(**grid.best_params_)
-    rf.fit(np.vstack([x_train, x_test]), np.hstack([y_train, y_test]))
+    val_names = np.array(test_slides)
 
-    with open("random_forest.pkl", "wb+") as file:
-        pickle.dump(rf, file)
+    src_path = "/scratch/users/rmormont/tissuenet/pred"
+    # move_samples(y_test == y_pred, y_test, y_pred, val_names, src_path, "goodclassif")
+    # move_samples(y_test != y_pred, y_test, y_pred, val_names, src_path, "missclassif")
+
+    # rf.set_params(**grid.best_params_)
+    # rf.fit(np.vstack([x_train, x_test]), np.hstack([y_train, y_test]))
+    #
+    # with open("random_forest.pkl", "wb+") as file:
+    #     pickle.dump(rf, file)
 
     # base_path = "/scratch/users/rmormont/tissuenet/"
     # wsi_path = os.path.join(base_path, "wsis")
