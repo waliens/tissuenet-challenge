@@ -12,13 +12,13 @@ import numpy as np
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, pool=True):
+    def __init__(self, in_ch, out_ch, fsize=3, pool=True):
         super().__init__()
         self.conv_block = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, 3, padding=1),
+            nn.Conv2d(in_ch, out_ch, fsize, padding=1),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, 3, padding=1),
+            nn.Conv2d(out_ch, out_ch, fsize, padding=1),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True)
         )
@@ -60,7 +60,7 @@ class MultiScaleNetwork(nn.Module):
             self.in_paths["zoom{}".format(zoom)] = nn.Sequential(modules)
 
         self.merged_path = nn.Sequential(
-            ConvBlock(self.outplanes * len(zooms), self.outplanes, pool=False),
+            ConvBlock(self.outplanes * len(zooms), self.outplanes, fsize=1, pool=False),
             *[ConvBlock(self.outplanes * (2 ** i), self.outplanes * (2 ** (i + 1))) for i in range(n_out_blocks)]
         )
 
