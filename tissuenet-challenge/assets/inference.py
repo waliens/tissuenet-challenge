@@ -156,14 +156,14 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, morph_iter=3, area_
     threshold = threshold_otsu(image[extr_mask])
     # remove extremum
     # also remove black pixels
-    thresh = (image <= threshold).astype(np.uint8)
+    thresh = np.logical_and(image <= threshold, extr_mask).astype(np.uint8)
     kernel_dim = max(int(0.005 * max_dim), 3)
     kernel_dim -= 1 - kernel_dim % 2
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, ksize=(kernel_dim, kernel_dim))
-    dilated = cv2.dilate(thresh, kernel, iterations=morph_iter)
-    eroded = cv2.erode(dilated, kernel, iterations=morph_iter)
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=morph_iter)
+    opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel)
 
-    objects = mask_to_objects_2d(eroded)
+    objects = mask_to_objects_2d(opened)
 
     # Only keep components greater than 2.5% of whole image
     min_area = int(area_ratio * width * height / 100)
@@ -186,21 +186,9 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, morph_iter=3, area_
         if not merged:
             checked_for_merge.append(poly)
 
-    def filter_by_shape(p):
-        """Filter polygons that are at least 20 higher (resp wider) than wide (resp. high)
-        Ok
-        """
-        xmin, ymin, xmax, ymax = p.bounds
-        width = xmax - xmin
-        height = ymax - ymin
-        if width > height:
-            return (width / height) < 20
-        else:
-            return (height / width) < 20
-
     return [
        affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
-       for p in checked_for_merge if filter_by_shape(p)
+       for p in checked_for_merge
     ]
 
 
