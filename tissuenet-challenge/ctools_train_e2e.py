@@ -16,8 +16,8 @@ def cstrnt_batchsize_zoom(**kwargs):
     zlevel = kwargs["zoom_level"]
     bsize = kwargs["batch_size"]
     arch = kwargs["architecture"]
-    return (arch in {"densenet121", "resnet50"} and (zlevel, bsize) in {(2, 32), (1, 8), (0, 2)}) or \
-           (arch in {"resnet34", "resnet18"} and (zlevel, bsize) in {(2, 32), (1, 16), (0, 4)})
+    return (arch in {"densenet121", "resnet50"} and (zlevel, bsize) in {(3, 32), (2, 32), (1, 8), (0, 2)}) or \
+           (arch in {"resnet34", "resnet18"} and (zlevel, bsize) in {(3, 32), (2, 32), (1, 16), (0, 4)})
 
 
 def cstrnt_pretraining(**kwargs):
@@ -25,9 +25,8 @@ def cstrnt_pretraining(**kwargs):
 
 
 if __name__ == "__main__":
-
-    set_stdout_logging()
     # Define the parameter set: the domain each variable can take
+    set_stdout_logging()
 
     environment, namespace = env_parser().parse()
     env_params = dict(namespace._get_kwargs())
@@ -53,6 +52,8 @@ if __name__ == "__main__":
     param_set.add_parameters(train_size=0.8)
     param_set.add_parameters(random_seed=42)
     param_set.add_parameters(learning_rate=[0.001, 0.0001])
+    param_set.add_separator()
+    param_set.add_parameters(zoom_level=[3])
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(bsize_zoom_arch=cstrnt_batchsize_zoom)
