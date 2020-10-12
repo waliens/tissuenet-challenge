@@ -16,7 +16,7 @@ def moving_average(data, alpha=0.75):
 
 if __name__ == "__main__":
 
-    datacube = build_datacube("tissuenet-e2e-train")
+    datacube = build_datacube("tissuenet-e2e-train-2nd")
     plot_path = "/scratch/users/rmormont/tissuenet/plots"
 
     os.makedirs(plot_path, exist_ok=True)
@@ -72,6 +72,8 @@ if __name__ == "__main__":
         min_curve = 1
         for (arch, pre), arch_cube in cube.iter_dimensions("architecture", "pretrained"):
             val_acc = arch_cube("val_acc")
+            if val_acc is None:
+                continue
             x_val = np.arange(0, len(val_acc)) + 1
             plt.plot(x_val, val_acc, label="{} - {} (best: {:0.4f})".format(arch, pre, np.max(val_acc)))
             min_curve = min(np.min(val_acc), min_curve)
