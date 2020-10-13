@@ -100,6 +100,7 @@ def main(argv):
             print("/!\\ ... predicting 0")
             probas.append([1., 0., 0., 0.])
             tiles.extend([])
+            filenames.append(filename)
 
         print("-> {:3.2f}% - {} / {}".format(100 * (i + 1) / len(slidenames), i + 1, len(slidenames)))
 
@@ -108,7 +109,7 @@ def main(argv):
     return {
         "probas": probas,
         "filenames": filenames,
-        "tiles": [(tile.abs_offset_x, tile.abs_offset_y, tile.height, tile.width) for tile in slide_tiles]
+        "tiles": [(tile.abs_offset_x, tile.abs_offset_y, tile.height, tile.width) for tile in tiles]
     }
 
     # print()

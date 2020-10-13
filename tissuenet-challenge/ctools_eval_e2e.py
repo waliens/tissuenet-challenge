@@ -36,7 +36,8 @@ if __name__ == "__main__":
 
             filename = batch_size_cube("models")[best_epoch]
 
-            print("best", best_epoch, filename, batch_size_cube["val_acc"][best_epoch])
+            # print("best", best_epoch, filename, batch_size_cube["val_acc"][best_epoch])
+            # print("\"{}\": {},".format(filename, lr))
 
             param_set.add_parameter_tuple(
                 architecture=arch,
