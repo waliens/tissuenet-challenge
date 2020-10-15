@@ -1,4 +1,5 @@
 import pickle
+from collections import defaultdict
 
 from clustertools import build_datacube
 import numpy as np
@@ -69,14 +70,10 @@ OUT_CLS_DICT = "cls_dict"
 OUT_PROBAS = "probas"
 
 
-def extract_predictor_slide(datacube, tile_pred_aggr_fn=None):
-    if tile_pred_aggr_fn is None:
-        tile_pred_aggr_fn = cls_dict_aggr
-
+def extract_tiles_individual(datacube):
     per_method = dict()
     for (model_name, ), model_cube in datacube.iter_dimensions("model_filename"):
         for param_tuple, subcube in model_cube.iter_dimensions("batch_size", "architecture", "zoom_level", "tile_size"):
-
             if subcube.diagnose()["Missing ratio"] > 0.0:
                 continue
             _, arch, zoom, _ = param_tuple
@@ -87,14 +84,44 @@ def extract_predictor_slide(datacube, tile_pred_aggr_fn=None):
             tile_dict = {(filename, tile): probas[i]
                           for i, (filename, tile)
                           in enumerate(zip(subcube("filenames"), subcube("tiles")))}
-
-            slide_dict = dict()
-            for (filename, tile), tile_pred in tile_dict.items():
-                slide_dict[filename] = tile_pred_aggr_fn(slide_dict.get(filename, None), tile_pred)
-
-            per_method[(arch, pretrained, zoom, str(MODEL_TO_LR[model_name]))] = slide_dict
-
+            per_method[(arch, pretrained, zoom, str(MODEL_TO_LR[model_name]))] = tile_dict
     return per_method
+
+
+def extract_predictor_slide(datacube, tile_pred_aggr_fn=None):
+    per_method_tiles = extract_tiles_individual(datacube)
+    per_method_merged = dict()
+    for method, tile_dict in per_method_tiles.items():
+        slide_dict = dict()
+        for (filename, tile), tile_pred in tile_dict.items():
+            slide_dict[filename] = tile_pred_aggr_fn(slide_dict.get(filename, None), tile_pred)
+        per_method_merged[method] = slide_dict
+    return per_method_merged
+
+
+def extract_ensemble_predictor_slide(datacube, to_merge, proba_aggr_fn=None, tile_pred_aggr_fn=None):
+    if proba_aggr_fn is None:
+        proba_aggr_fn = lambda f, s: f + s
+    per_method_tiles = extract_tiles_individual(datacube)
+    to_merge = set(to_merge)
+    param_order = {k: i for i, k in enumerate(["architecture", "pretrained", "zoom_level", "lr"])}
+    per_method_merged = dict()
+    per_method_merged_count = defaultdict(lambda: 0)
+    for method, tile_dict in per_method_tiles.items():
+        key = tuple(method[i] for k, i in param_order.items() if k not in to_merge)
+        merged_dict = per_method_merged.get(key, None)
+        if merged_dict is None:
+            per_method_merged[key] = tile_dict
+        else:
+            per_method_merged[key] = {k: proba_aggr_fn(p, merged_dict[k]) for k, p in tile_dict.items()}
+        per_method_merged_count[key] += 1
+    per_method_slide = dict()
+    for method, tile_dict in per_method_merged.items():
+        slide_dict = dict()
+        for (filename, tile), tile_pred in tile_dict.items():
+            slide_dict[filename] = tile_pred_aggr_fn(slide_dict.get(filename, None), tile_pred / per_method_merged_count[method])
+        per_method_slide[method] = slide_dict
+    return per_method_slide
 
 
 def main():
@@ -106,6 +133,8 @@ def main():
 
     per_method_cls_dict = extract_predictor_slide(datacube, cls_dict_aggr)
     per_method_probas = extract_predictor_slide(datacube, probas_sum_aggr)
+    per_method_cls_dict_forest = extract_ensemble_predictor_slide(datacube, to_merge=["architecture", "pretrained", "lr"], tile_pred_aggr_fn=cls_dict_aggr)
+    per_method_probas_forest = extract_ensemble_predictor_slide(datacube, to_merge=["architecture", "pretrained", "lr"], tile_pred_aggr_fn=probas_sum_aggr)
 
     print(per_method_probas.keys())
     print(per_method_cls_dict.keys())
@@ -123,7 +152,12 @@ def main():
     folder = KFold(n_splits=5)
 
     all_methods = dict()
-    for aggr_method, per_method, prepare_func in [("cls_dict", per_method_cls_dict, get_dataset_cls_dict), ("probas", per_method_probas, get_dataset_probas_dict)]:
+    for aggr_method, per_method, prepare_func in [
+        ("cls_dict", per_method_cls_dict, get_dataset_cls_dict),
+        ("probas", per_method_probas, get_dataset_probas_dict),
+        ("cls_dict_ensemble", per_method_cls_dict_forest, get_dataset_cls_dict),
+        ("probas_ensemble", per_method_probas_forest, get_dataset_probas_dict)
+    ]:
         for method, x in per_method.items():
             x_train, y_train = prepare_func(train_slides, x, slide2cls, norm=False)
             x_test, y_test = prepare_func(test_slides, x, slide2cls, norm=False)
@@ -165,6 +199,7 @@ def main():
 
     with open("random_forest.pkl", "wb+") as file:
         pickle.dump(best_result[2], file)
+
 
 if __name__ == "__main__":
     main()
