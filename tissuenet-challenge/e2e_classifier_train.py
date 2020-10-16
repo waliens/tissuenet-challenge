@@ -107,6 +107,14 @@ def main(argv):
     parser.add_argument("-l", "--learning_rate", dest="lr", default=0.001, type=float)
     parser.add_argument("-d", "--device", dest="device", default="cpu")
     parser.add_argument("-j", "--n_jobs", dest="n_jobs", default=1, type=int)
+    parser.add_argument("--aug_elastic_alpha_low", dest="aug_elastic_alpha_low", type=int, default=80)
+    parser.add_argument("--aug_elastic_alpha_high", dest="aug_elastic_alpha_high", type=int, default=120)
+    parser.add_argument("--aug_elastic_sigma_low", dest="aug_elastic_sigma_low", type=float, default=9.0)
+    parser.add_argument("--aug_elastic_sigma_high", dest="aug_elastic_sigma_high", type=float, default=11.0)
+    parser.add_argument("--aug_hed_bias_range", dest="aug_hed_bias_range", type=float, default=0.025)
+    parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
+    parser.add_argument("--aug_blur_sigma_extent", dest="aug_blur_sigma_extent", type=float, default=0.1)
+    parser.add_argument("--aug_noise_var_extent", dest="aug_noise_var_extent", type=float, default=0.1)
     args, _ = parser.parse_known_args(argv)
 
     print(args)
@@ -134,10 +142,26 @@ def main(argv):
         transforms.RandomVerticalFlip(),
         transforms.RandomHorizontalFlip(),
         ToNumpy(),
-        partial(random_elastic_transform, random_state=aug_rstate),
-        partial(random_gaussian_noise, random_state=aug_rstate),
-        partial(random_blur, random_state=aug_rstate),
-        partial(random_hed_ratio, random_state=aug_rstate),
+        partial(
+            random_elastic_transform,
+            alpha_low=args.aug_elastic_alpha_low,
+            alpha_high=args.aug_elastic_alpha_high,
+            sigma_low=args.aug_elastic_sigma_low,
+            sigma_high=args.aug_elastic_sigma_high,
+            random_state=aug_rstate),
+        partial(
+            random_gaussian_noise,
+            var_extent=args.aug_noise_var_extent,
+            random_state=aug_rstate),
+        partial(
+            random_blur,
+            sigma_extent=args.aug_blur_sigma_extent,
+            random_state=aug_rstate),
+        partial(
+            random_hed_ratio,
+            bias_range=args.aug_hed_bias_range,
+            coef_range=args.aug_hed_coef_range,
+            random_state=aug_rstate),
         transforms.Lambda(lambda img: img.astype(np.float32))
      ] + post_trans)
 
@@ -150,7 +174,7 @@ def main(argv):
     test_dataset = PathDataset(test_data, test_transform)
     train_generator = torch.Generator()
     train_generator.manual_seed(args.random_seed)
-    train_sampler = RandomSampler(train_dataset, num_samples=len(train_dataset), replacement=True, generator=train_generator)
+    train_sampler = RandomSampler(train_dataset, generator=train_generator)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.n_jobs, sampler=train_sampler, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=args.n_jobs, pin_memory=True)
 
