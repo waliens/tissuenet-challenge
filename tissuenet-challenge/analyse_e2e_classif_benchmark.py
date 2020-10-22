@@ -151,8 +151,6 @@ def main():
     train_exp_name = "tissuenet-e2e-train-3rd"
     per_method_cls_dict = extract_predictor_slide(datacube, train_exp_name, cls_dict_aggr)
     per_method_probas = extract_predictor_slide(datacube, train_exp_name, probas_sum_aggr)
-    # per_method_cls_dict_forest = extract_ensemble_predictor_slide(datacube, to_merge=["architecture", "pretrained", "lr"], tile_pred_aggr_fn=cls_dict_aggr)
-    # per_method_probas_forest = extract_ensemble_predictor_slide(datacube, to_merge=["architecture", "pretrained", "lr"], tile_pred_aggr_fn=probas_sum_aggr)
 
     print(per_method_probas.keys())
     print(per_method_cls_dict.keys())
@@ -172,9 +170,7 @@ def main():
     all_methods = dict()
     for aggr_method, per_method, prepare_func in [
         ("cls_dict", per_method_cls_dict, get_dataset_cls_dict),
-        ("probas", per_method_probas, get_dataset_probas_dict),
-        # ("cls_dict_ensemble", per_method_cls_dict_forest, get_dataset_cls_dict),
-        # ("probas_ensemble", per_method_probas_forest, get_dataset_probas_dict)
+        ("probas", per_method_probas, get_dataset_probas_dict)
     ]:
         for method, x in per_method.items():
             x_train, y_train = prepare_func(train_slides, x, slide2cls, norm=False)
@@ -195,28 +191,31 @@ def main():
             print_eval(y_test, y_pred)
 
             all_methods[method_tuple] = (
-                grid,
+                grid.best_score_,
                 compute_challenge_score(y_test, y_pred),
-                grid.best_estimator_.fit(np.vstack([x_train, x_test]), np.hstack([y_train, y_test]))
             )
+
+            refit = grid.best_estimator_.fit(np.vstack([x_train, x_test]), np.hstack([y_train, y_test]))
+            with open("{}.pkl".format("_".join(map(str, method))), "wb+") as file:
+                pickle.dump(refit, file)
+            del grid
+            del refit
 
     best_method = None
     best_result = None
     best_score = 0
     for method, result_tuple in all_methods.items():
-        grid, test_score, model = result_tuple
-        if grid.best_score_ > best_score:
-            best_score = grid.best_score_
+        grid_score, test_score = result_tuple
+        if grid_score > best_score:
+            best_score = grid_score
             best_method = method
             best_result = result_tuple
-        print("\t".join(map(str, method)) + "\t{}\t{}".format(grid.best_score_, test_score))
+        print("\t".join(map(str, method)) + "\t{}\t{}".format(grid_score, test_score))
 
     print("Best: ", best_method)
     print("> val score : {}".format(best_result[0].best_score_))
     print("> test score: {}".format(best_result[1]))
 
-    with open("random_forest.pkl", "wb+") as file:
-        pickle.dump(best_result[2], file)
 
 
 if __name__ == "__main__":
