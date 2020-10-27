@@ -184,7 +184,7 @@ def main(argv):
 
     return {
         "train_loss": losses,
-        "val_score": val_score,
+        "val_score": val_scores,
         "models": models
     }
 
