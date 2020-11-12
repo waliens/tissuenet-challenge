@@ -32,14 +32,14 @@ if __name__ == "__main__":
     np.random.seed(42)
 
     param_set = ParameterSet()
-    param_set.add_parameters(epochs=30)
+    param_set.add_parameters(epochs=100)
     param_set.add_parameters(batch_size=[4])
     param_set.add_parameters(train_size=0.8)
-    param_set.add_parameters(random_seed=np.random.randint(0, (1 << 32) - 1, size=5))
-    param_set.add_parameters(learning_rate=[0.01, 0.005, 0.001, 0.0005, 0.0001])
+    param_set.add_parameters(random_seed=np.random.randint(0, (1 << 32) - 1))
+    param_set.add_parameters(learning_rate=[0.001])
 
     # Wrap it together as an experiment
-    experiment = Experiment("tissuenet-encoded-train-1st", param_set, CliComputationFactory(main, **env))
+    experiment = Experiment("tissuenet-encoded-train-2nd", param_set, CliComputationFactory(main, **env))
 
     # Finally run the experiment
     environment.run(experiment)

@@ -18,6 +18,7 @@ from assets.inference import foreground_detect, TimingContextManager, convex_whi
 from assets.mtdp import build_model
 from assets.sldc.image import FixedSizeTileTopology
 from assets.sldc_pyvips.adapter import PyVipsSlide, PyVipsTileBuilder
+from encoded_slide_train import CustomSlideClassifier
 
 
 def check_tile_intersects(tile, polygons):
@@ -64,46 +65,6 @@ class SlideEncoder(object):
     @abstractmethod
     def encode(self, slide_path):
         pass
-
-
-class SlideClassifier(torch.nn.Module):
-    def __init__(self, n_classes, features_in=1024):
-        super().__init__()
-        self._min_input_size = 32
-        self._n_downsampling = 3
-        self.inlayer = torch.nn.Conv2d(features_in, 128, kernel_size=1, bias=False)
-        self.layer1 = self._make_layer(128, 32, pool=True)
-        self.layer2 = self._make_layer(32, 16, pool=True)
-        self.layer3 = self._make_layer(16, 4, pool=True)
-        self.avgpool = torch.nn.AdaptiveAvgPool2d(1)
-        self.softmax = torch.nn.LogSoftmax(n_classes)
-
-    def _make_layer(self, in_planes, out_planes, pool=False, ksize=3):
-        layers = list()
-        layers.append(torch.nn.Conv2d(in_planes, out_planes, kernel_size=ksize, bias=False))
-        layers.append(torch.nn.BatchNorm2d(out_planes))
-        layers.append(torch.nn.ReLU())
-        if pool:
-            layers.append(torch.nn.AvgPool2d(ksize, stride=2))
-        return torch.nn.Sequential(*layers)
-
-    def _pad_input(self, x):
-        b, c, h, w = tuple(x.size())
-        mult = 2 ** self._n_downsampling
-        final_h = max(self._min_input_size, h + mult - (h % mult) if h % mult > 0 else h)
-        final_w = max(self._min_input_size, w + mult - (w % mult) if w % mult > 0 else w)
-        diff_h = final_h - h
-        diff_w = final_w - w
-        return ConstantPad2d([0, diff_w, 0, diff_h], 0.0)(x)
-
-    def forward(self, x):
-        # padding for avoiding error on pooling
-        x = self._pad_input(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.avgpool(x)
-        return self.softmax(x)
 
 
 class ModelSlideEncoder(SlideEncoder):
@@ -189,16 +150,17 @@ def sizeof_fmt(num, suffix='B'):
 def main():
     PATH = "/scratch/users/rmormont/tissuenet"
     SLIDE_PATH = os.path.join(PATH, "wsis")
-    SAVE_PATH = os.path.join(PATH, "wsi_encoded")
-    PRETRAINED = "mtdp"
+    SAVE_PATH = os.path.join(PATH, "wsi_encoded_aug")
+    MODEL_PATH = os.path.join(PATH, "models", "continued", "contd_densenet121_mtdp_e_88_z2_1603752206.965628.pth")
     ARCH = "densenet121"
     N_JOBS = 8
     DEVICE = "cuda:0"
 
+    os.makedirs(SAVE_PATH, exist_ok=True)
     device = torch.device(DEVICE)
-    features = build_model(arch=ARCH, pretrained=PRETRAINED, pool=True)
-    # state_dict = torch.load(MODEL_PATH, map_location=device)
-    # features.load_state_dict(state_dict)
+    features = build_model(arch=ARCH, pretrained=False, pool=True)
+    state_dict = torch.load(MODEL_PATH, map_location=device)
+    features.load_state_dict({n.split(".", 1)[1]: v for n, v in state_dict.items() if not "linear." in n})
     features.eval()
     features.to(device)
 
@@ -208,7 +170,7 @@ def main():
     ])
 
     with torch.no_grad():
-        classifier = SlideClassifier(4)
+        classifier = CustomSlideClassifier()
         classifier.eval()
         classifier.to(device)
         encoder = ModelSlideEncoder(features, trans=trans, tile_size=320, zoom_level=2, n_jobs=N_JOBS, bg_exclude=True, crop_fg=True, device=device)

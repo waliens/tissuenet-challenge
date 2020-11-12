@@ -50,7 +50,7 @@ def pad_collate_fn(batch):
         return all_pad(*[t for t in batch])
 
 
-class SlideClassifier(torch.nn.Module):
+class CustomSlideClassifier(torch.nn.Module):
     def __init__(self, features_in=1024):
         super().__init__()
         self._min_input_size = 32
@@ -79,6 +79,54 @@ class SlideClassifier(torch.nn.Module):
         diff_h = final_h - h
         diff_w = final_w - w
         return torch.nn.ConstantPad2d([0, diff_w, 0, diff_h], 0.0)(x)
+
+    def forward(self, x):
+        # padding for avoiding error on pooling
+        x = self._pad_input(x)
+        x = self.inlayer(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.avgpool(x)
+        return self.softmax(x).squeeze()
+
+
+class TellezClassifier(torch.nn.Module):
+    def __init__(self, features_in=1024):
+        super().__init__()
+        self._min_input_size = 32
+        self._n_downsampling = 3
+        self.inlayer = torch.nn.Conv2d(features_in, 128, kernel_size=1, bias=False)
+        self.layer1 = self._make_layer(128, 32, pool=True)
+        self.layer2 = self._make_layer(32, 16, pool=True)
+        self.layer3 = self._make_layer(16, 4)
+        self.avgpool = torch.nn.AdaptiveAvgPool2d(1)
+        self.softmax = torch.nn.Softmax(1)
+
+    def _make_layer(self, in_planes, out_planes, pool=False, ksize=3):
+        layers = list()
+        layers.append(torch.nn.Conv2d(in_planes, out_planes, kernel_size=ksize, bias=False))
+        layers.append(torch.nn.BatchNorm2d(out_planes))
+        layers.append(torch.nn.ReLU())
+        if pool:
+            layers.append(torch.nn.AvgPool2d(ksize, stride=2))
+        return torch.nn.Sequential(*layers)
+
+    def _pad_input(self, x):
+        b, c, h, w = tuple(x.size())
+        mult = 2 ** self._n_downsampling
+        final_h = max(self._min_input_size, h + mult - (h % mult) if h % mult > 0 else h)
+        final_w = max(self._min_input_size, w + mult - (w % mult) if w % mult > 0 else w)
+        diff_h = final_h - h
+        diff_w = final_w - w
+        half_diff_h = diff_h // 2
+        half_diff_w = diff_w // 2
+        return torch.nn.ConstantPad2d([
+            half_diff_w,
+            diff_w - half_diff_w,
+            half_diff_h,
+            diff_h - half_diff_h
+        ], 0.0)(x)
 
     def forward(self, x):
         # padding for avoiding error on pooling
@@ -131,7 +179,7 @@ def main(argv):
     eval_dataset = NumpyEncodedDataset(test_slides, dirname=image_path, slide_classes=[slide2cls[s] for s in test_slides])
     eval_loader = DataLoader(eval_dataset, batch_size=1, num_workers=args.n_jobs, collate_fn=pad_collate_fn)
 
-    model = SlideClassifier()
+    model = CustomSlideClassifier()
     model.to(device)
 
     print("number of parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -146,14 +194,10 @@ def main(argv):
     for e in range(args.epochs):
         model.train()
         loss_queue = list()
-        # print("start training {}".format(e))
         for i, (x, y) in enumerate(train_loader):
-            # print("beforeto", x.size(), y.size(), flush=True)
             x = x.to(device)
             y = y.to(device)
-            # print(x.size(), y.size(), flush=True)
             out = model.forward(x)
-            # print("forwarded", out.size(), flush=True)
             loss = loss_fn(out, y)
             optimizer.zero_grad()
             loss.backward()

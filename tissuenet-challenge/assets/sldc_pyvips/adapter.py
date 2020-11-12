@@ -51,7 +51,7 @@ class PyVipsTile(Tile):
 class PyVipsTileBuilder(TileBuilder):
     def __init__(self, slide: PyVipsSlide):
         super().__init__()
-        self._region = pyvips.Region.new(slide.pyvips_slide)
+        self._region = pyvips.Region.new(slide.base_image.pyvips_slide)
 
     def build(self, image, offset, width, height, polygon_mask=None):
         return PyVipsTile(self._region, image, offset, width, height, polygon_mask=polygon_mask)
