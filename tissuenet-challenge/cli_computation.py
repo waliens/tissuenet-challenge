@@ -5,6 +5,15 @@ from clustertools.storage import PickleStorage
 class CliComputation(Computation):
     def __init__(self, exp_name, comp_name, main_fn, context="n/a",
                  storage_factory=PickleStorage, **env_params):
+        """
+
+        :param exp_name:
+        :param comp_name:
+        :param main_fn: main function taking sys.argv[1:] as only parameter
+        :param context:
+        :param storage_factory:
+        :param env_params: environment parameters
+        """
         super().__init__(exp_name, comp_name, context=context, storage_factory=storage_factory)
         self._env_params = env_params
         self._main_fn = main_fn
