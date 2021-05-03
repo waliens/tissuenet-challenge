@@ -16,7 +16,7 @@ from joblib import delayed
 from shapely import wkt
 from shapely.affinity import affine_transform
 from sklearn import metrics
-from sldc import batch_split, BinaryLocator
+from sldc import batch_split
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
@@ -24,6 +24,30 @@ from torchvision.transforms import transforms
 
 from dataset import RemoteAnnotationTrainDataset, segmentation_transform, predict_roi, AnnotationCrop
 from unet import Unet
+
+
+def soft_dice_coefficient(y_true, y_pred, epsilon=1e-6):
+    '''
+    Soft dice loss calculation for arbitrary batch size, number of classes, and number of spatial dimensions.
+    Assumes the `channels_last` format.
+
+    # Arguments
+        y_true: b x X x Y( x Z...) x c One hot encoding of ground truth
+        y_pred: b x X x Y( x Z...) x c Network output, must sum to 1 over c channel (such as after softmax)
+        epsilon: Used for numerical stability to avoid divide by zero errors
+
+    # References
+        V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation
+        https://arxiv.org/abs/1606.04797
+        More details on Dice loss formulation
+        https://mediatum.ub.tum.de/doc/1395260/1395260.pdf (page 72)
+
+        Adapted from https://github.com/Lasagne/Recipes/issues/99#issuecomment-347775022
+    '''
+    # skip the batch and class axis for calculating Dice score
+    numerator = 2. * np.sum(y_pred * y_true)
+    denominator = np.sum(np.square(y_pred) + np.square(y_true))
+    return np.mean((numerator + epsilon) / (denominator + epsilon))  # average over classes and batch
 
 
 def torange0_1(t):
@@ -89,9 +113,10 @@ def main(argv):
         parser.add_argument("-j", "--n_jobs", dest="n_jobs", default=1, type=int)
         parser.add_argument("-e", "--epochs", dest="epochs", default=1, type=int)
         parser.add_argument("-d", "--device", dest="device", default="cpu")
-        parser.add_argument("-o", "--overlap", dest="overlap", default=0, type=int)
+        parser.add_argument("-o", "--tile_overlap", dest="tile_overlap", default=0, type=int)
         parser.add_argument("-t", "--tile_size", dest="tile_size", default=256, type=int)
         parser.add_argument("-z", "--zoom_level", dest="zoom_level", default=0, type=int)
+        parser.add_argument("-l", "--loss", dest="loss", default="")
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--data_path", "--dpath", dest="data_path",
@@ -161,6 +186,8 @@ def main(argv):
         results = {
             "train_losses": [],
             "val_losses": [],
+            "val_dice": [],
+            "val_hausdorff": [],
             "val_metrics": [],
             "save_path": []
         }
@@ -187,6 +214,7 @@ def main(argv):
             # validation
             val_losses = np.zeros(len(val_rois), dtype=np.float)
             val_roc_auc = np.zeros(len(val_rois), dtype=np.float)
+            val_dice = np.zeros(len(val_rois), dtype=np.float)
             val_cm = np.zeros([len(val_rois), 2, 2], dtype=np.int)
 
             for i, roi in enumerate(val_crops):
@@ -197,21 +225,24 @@ def main(argv):
                         in_trans=transforms.ToTensor(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
-                        overlap=args.overlap,
+                        overlap=args.tile_overlap,
                         n_jobs=args.n_jobs,
                         zoom_level=args.zoom_level
                     )
 
                 val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
                 val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
+                val_dice[i] = soft_dice_coefficient(y_true, y_pred)
                 val_cm[i] = metrics.confusion_matrix(y_true.flatten().astype(np.uint8), (y_pred.flatten() > 0.5).astype(np.uint8))
 
             print("------------------------------")
             print("Epoch {}:".format(e))
             val_loss = np.mean(val_losses)
             roc_auc = np.mean(val_roc_auc)
+            dice = np.mean(val_dice)
             print("> val_loss: {:1.5f}".format(val_loss))
             print("> roc_auc : {:1.5f}".format(roc_auc))
+            print("> dice    : {:1.5f}".format(dice))
             cm = np.sum(val_cm, axis=0)
             cnt = np.sum(val_cm)
             print("CM at 0.5 threshold")
@@ -223,6 +254,7 @@ def main(argv):
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
             results["val_losses"].append(val_loss)
+            results["val_dice"].append(val_dice)
             results["val_metrics"].append(roc_auc)
             results["save_path"].append(filename)
 
@@ -251,7 +283,7 @@ class TrainComputation(Computation):
                 "--n_jobs", str(self._n_jobs),
                 "--epochs", str(epochs),
                 "--device", str(self._device),
-                "--overlap", str(overlap),
+                "--tile_overlap", str(overlap),
                 "--tile_size", str(tile_size),
                 "--lr", str(lr),
                 "--init_fmaps", str(init_fmaps),

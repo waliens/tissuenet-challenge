@@ -39,7 +39,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("thyroid-unet-training", param_set, make_build_fn(**env_params))
+    experiment = Experiment("thyroid-unet-training-dice", param_set, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)

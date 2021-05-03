@@ -6,7 +6,6 @@ import math
 import numpy as np
 import sldc
 from PIL import Image
-from cytomine.models import ImageInstance
 from rasterio.features import rasterize
 from shapely import wkt
 from shapely.affinity import translate, affine_transform
@@ -250,7 +249,7 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     tile_size: int
         Tile size
     overlap: int
-        Tile overlap
+        Tile tile_overlap
     n_jobs: int
         Number of jobs available
     zoom_level: int

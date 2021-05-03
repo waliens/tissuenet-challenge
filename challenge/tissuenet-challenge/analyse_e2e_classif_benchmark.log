@@ -1,0 +1,1192 @@
+['filenames', 'probas', 'repr', 'tiles']
+{'train_size': '0.8', 'random_seed': '42'}
+{'architecture': ['densenet121', 'resnet18', 'resnet34', 'resnet50'], 'zoom_level': ['1', '2', '3'], 'model_filename': ['densenet121_imagenet_e_16_val_0.8092_sco_0.9523_z1_1602269610.556128.pth', 'densenet121_imagenet_e_18_val_0.7985_sco_0.9426_z2_1602270033.686283.pth', 'densenet121_imagenet_e_27_val_0.7714_sco_0.9405_z3_1602497438.170938.pth', 'densenet121_imagenet_e_37_val_0.7714_sco_0.9280_z1_1602297064.95862.pth', 'densenet121_imagenet_e_42_val_0.7903_sco_0.9427_z3_1602500515.90902.pth', 'densenet121_imagenet_e_56_val_0.8067_sco_0.9482_z2_1602274272.266287.pth', 'densenet121_mtdp_e_13_val_0.8035_sco_0.9437_z2_1602261301.097603.pth', 'densenet121_mtdp_e_20_val_0.8166_sco_0.9529_z2_1602270971.797485.pth', 'densenet121_mtdp_e_29_val_0.7821_sco_0.9394_z3_1602497634.902743.pth', 'densenet121_mtdp_e_29_val_0.7870_sco_0.9433_z3_1602497749.006002.pth', 'densenet121_mtdp_e_35_val_0.8125_sco_0.9548_z1_1602294993.20278.pth', 'densenet121_mtdp_e_42_val_0.7812_sco_0.9372_z1_1602302274.124153.pth', 'resnet18_imagenet_e_20_val_0.7689_sco_0.9356_z2_1602271013.427048.pth', 'resnet18_imagenet_e_25_val_0.7656_sco_0.9342_z1_1602288221.466545.pth', 'resnet18_imagenet_e_29_val_0.7829_sco_0.9394_z2_1602273845.577956.pth', 'resnet18_imagenet_e_30_val_0.7401_sco_0.9293_z3_1602499053.351917.pth', 'resnet18_imagenet_e_52_val_0.7599_sco_0.9376_z3_1602503546.608902.pth', 'resnet34_imagenet_e_13_val_0.7928_sco_0.9416_z2_1602268977.799415.pth', 'resnet34_imagenet_e_16_val_0.7426_sco_0.9309_z3_1602496152.337871.pth', 'resnet34_imagenet_e_23_val_0.7697_sco_0.9355_z2_1602272360.440732.pth', 'resnet34_imagenet_e_29_val_0.8018_sco_0.9463_z1_1602292926.445457.pth', 'resnet34_imagenet_e_39_val_0.7664_sco_0.9310_z1_1602304468.116915.pth', 'resnet34_imagenet_e_49_val_0.7656_sco_0.9394_z3_1602502754.449239.pth', 'resnet50_imagenet_e_13_val_0.8092_sco_0.9463_z1_1602278212.460756.pth', 'resnet50_imagenet_e_16_val_0.7919_sco_0.9454_z2_1602270120.230495.pth', 'resnet50_imagenet_e_29_val_0.7393_sco_0.9275_z3_1602498166.004176.pth', 'resnet50_imagenet_e_31_val_0.7582_sco_0.9326_z2_1602274314.81669.pth', 'resnet50_imagenet_e_31_val_0.7640_sco_0.9329_z1_1602294758.970913.pth', 'resnet50_imagenet_e_59_val_0.7821_sco_0.9447_z3_1602505790.992334.pth', 'resnet50_mtdp_e_13_val_0.8084_sco_0.9457_z1_1602278600.525486.pth', 'resnet50_mtdp_e_16_val_0.7771_sco_0.9360_z3_1602495632.231674.pth', 'resnet50_mtdp_e_22_val_0.7475_sco_0.9287_z3_1602496806.118761.pth', 'resnet50_mtdp_e_27_val_0.7673_sco_0.9352_z2_1602274284.932415.pth', 'resnet50_mtdp_e_42_val_0.7977_sco_0.9470_z2_1602278632.321392.pth'], 'tile_size': ['320', '640'], 'batch_size': ['8', '32']}
+dict_keys([('densenet121', 'imagenet', '1', '0.0001'), ('densenet121', 'imagenet', '2', '0.001'), ('densenet121', 'imagenet', '3', '0.0001'), ('densenet121', 'imagenet', '1', '0.001'), ('densenet121', 'imagenet', '3', '0.001'), ('densenet121', 'imagenet', '2', '0.0001'), ('densenet121', 'mtdp', '2', '0.0001'), ('densenet121', 'mtdp', '2', '0.001'), ('densenet121', 'mtdp', '3', '0.0001'), ('densenet121', 'mtdp', '3', '0.001'), ('densenet121', 'mtdp', '1', '0.0001'), ('densenet121', 'mtdp', '1', '0.001'), ('resnet18', 'imagenet', '2', '0.001'), ('resnet18', 'imagenet', '1', '0.001'), ('resnet18', 'imagenet', '2', '0.0001'), ('resnet18', 'imagenet', '3', '0.001'), ('resnet18', 'imagenet', '3', '0.0001'), ('resnet34', 'imagenet', '2', '0.0001'), ('resnet34', 'imagenet', '3', '0.001'), ('resnet34', 'imagenet', '2', '0.001'), ('resnet34', 'imagenet', '1', '0.0001'), ('resnet34', 'imagenet', '1', '0.001'), ('resnet34', 'imagenet', '3', '0.0001'), ('resnet50', 'imagenet', '1', '0.0001'), ('resnet50', 'imagenet', '2', '0.0001'), ('resnet50', 'imagenet', '3', '0.001'), ('resnet50', 'imagenet', '2', '0.001'), ('resnet50', 'imagenet', '1', '0.001'), ('resnet50', 'imagenet', '3', '0.0001'), ('resnet50', 'mtdp', '1', '0.0001'), ('resnet50', 'mtdp', '3', '0.0001'), ('resnet50', 'mtdp', '3', '0.001'), ('resnet50', 'mtdp', '2', '0.001'), ('resnet50', 'mtdp', '2', '0.0001')])
+dict_keys([('densenet121', 'imagenet', '1', '0.0001'), ('densenet121', 'imagenet', '2', '0.001'), ('densenet121', 'imagenet', '3', '0.0001'), ('densenet121', 'imagenet', '1', '0.001'), ('densenet121', 'imagenet', '3', '0.001'), ('densenet121', 'imagenet', '2', '0.0001'), ('densenet121', 'mtdp', '2', '0.0001'), ('densenet121', 'mtdp', '2', '0.001'), ('densenet121', 'mtdp', '3', '0.0001'), ('densenet121', 'mtdp', '3', '0.001'), ('densenet121', 'mtdp', '1', '0.0001'), ('densenet121', 'mtdp', '1', '0.001'), ('resnet18', 'imagenet', '2', '0.001'), ('resnet18', 'imagenet', '1', '0.001'), ('resnet18', 'imagenet', '2', '0.0001'), ('resnet18', 'imagenet', '3', '0.001'), ('resnet18', 'imagenet', '3', '0.0001'), ('resnet34', 'imagenet', '2', '0.0001'), ('resnet34', 'imagenet', '3', '0.001'), ('resnet34', 'imagenet', '2', '0.001'), ('resnet34', 'imagenet', '1', '0.0001'), ('resnet34', 'imagenet', '1', '0.001'), ('resnet34', 'imagenet', '3', '0.0001'), ('resnet50', 'imagenet', '1', '0.0001'), ('resnet50', 'imagenet', '2', '0.0001'), ('resnet50', 'imagenet', '3', '0.001'), ('resnet50', 'imagenet', '2', '0.001'), ('resnet50', 'imagenet', '1', '0.001'), ('resnet50', 'imagenet', '3', '0.0001'), ('resnet50', 'mtdp', '1', '0.0001'), ('resnet50', 'mtdp', '3', '0.0001'), ('resnet50', 'mtdp', '3', '0.001'), ('resnet50', 'mtdp', '2', '0.001'), ('resnet50', 'mtdp', '2', '0.0001')])
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:   10.6s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:   10.6s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.4s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.4s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.6s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.7s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.2s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.1s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.8s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.5s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    7.0s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+[Parallel(n_jobs=16)]: Using backend LokyBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s remaining:    0.0s
+[Parallel(n_jobs=16)]: Done  30 out of  30 | elapsed:    6.9s finished
+-------------------------------------------------
+('cls_dict', 'densenet121', 'imagenet', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8966901461788988
+> slide acc:  0.5812807881773399
+> slide sco:  0.8714285714285714
+> slide cm : 
+[[36 23  7  1]
+ [13 29 16  0]
+ [ 6  9 25  4]
+ [ 1  3  2 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.879429675073847
+> slide acc:  0.5862068965517241
+> slide sco:  0.8812807881773399
+> slide cm : 
+[[36 23  7  1]
+ [14 31 11  2]
+ [ 2 11 26  5]
+ [ 0  3  5 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9000159054760282
+> slide acc:  0.645320197044335
+> slide sco:  0.8955665024630542
+> slide cm : 
+[[39 21  4  3]
+ [11 33 13  1]
+ [ 3  5 29  7]
+ [ 1  0  3 30]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8636817389987124
+> slide acc:  0.6009852216748769
+> slide sco:  0.8748768472906405
+> slide cm : 
+[[42 18  6  1]
+ [13 30 14  1]
+ [ 4 10 25  5]
+ [ 2  2  5 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8831167158979021
+> slide acc:  0.5714285714285714
+> slide sco:  0.8832512315270936
+> slide cm : 
+[[29 27  9  2]
+ [14 33 11  0]
+ [ 1  8 26  9]
+ [ 0  1  5 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8988805574490646
+> slide acc:  0.6108374384236454
+> slide sco:  0.8916256157635468
+> slide cm : 
+[[40 20  6  1]
+ [14 32 12  0]
+ [ 4 11 24  5]
+ [ 0  1  5 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'mtdp', '2', '0.0001')
+best_params: {'min_samples_leaf': 25}
+best_score: 0.9023411345906235
+> slide acc:  0.6502463054187192
+> slide sco:  0.9078817733990149
+> slide cm : 
+[[31 27  7  2]
+ [11 40  7  0]
+ [ 1  8 30  5]
+ [ 0  1  2 31]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'mtdp', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8741407255926685
+> slide acc:  0.5665024630541872
+> slide sco:  0.8719211822660099
+> slide cm : 
+[[34 24  7  2]
+ [17 32  9  0]
+ [ 7  7 23  7]
+ [ 0  2  6 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'mtdp', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9015042035900931
+> slide acc:  0.5911330049261084
+> slide sco:  0.887192118226601
+> slide cm : 
+[[34 26  5  2]
+ [18 31  8  1]
+ [ 4 10 26  4]
+ [ 2  0  3 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'mtdp', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8889949253957432
+> slide acc:  0.6305418719211823
+> slide sco:  0.8950738916256157
+> slide cm : 
+[[39 18  6  4]
+ [18 28 12  0]
+ [ 1  4 33  6]
+ [ 0  1  5 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'mtdp', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9012141180034842
+> slide acc:  0.6600985221674877
+> slide sco:  0.8862068965517241
+> slide cm : 
+[[41 15  8  3]
+ [11 39  8  0]
+ [ 1 12 26  5]
+ [ 1  3  2 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'densenet121', 'mtdp', '1', '0.001')
+best_params: {'min_samples_leaf': 25}
+best_score: 0.8622116185715368
+> slide acc:  0.6009852216748769
+> slide sco:  0.884729064039409
+> slide cm : 
+[[37 25  3  2]
+ [12 33 11  2]
+ [ 4 10 26  4]
+ [ 1  2  5 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet18', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8644209649322125
+> slide acc:  0.5763546798029556
+> slide sco:  0.8827586206896552
+> slide cm : 
+[[34 24  8  1]
+ [19 30  7  2]
+ [ 2  8 29  5]
+ [ 1  1  8 24]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet18', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 25}
+best_score: 0.859873513595395
+> slide acc:  0.5812807881773399
+> slide sco:  0.8901477832512315
+> slide cm : 
+[[35 27  3  2]
+ [12 35 10  1]
+ [ 3 15 21  5]
+ [ 0  1  6 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet18', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8928781337574794
+> slide acc:  0.5960591133004927
+> slide sco:  0.8748768472906405
+> slide cm : 
+[[36 21  7  3]
+ [13 36  9  0]
+ [ 4 11 24  5]
+ [ 1  1  7 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet18', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8530864197530864
+> slide acc:  0.5467980295566502
+> slide sco:  0.8566502463054187
+> slide cm : 
+[[34 23  6  4]
+ [11 28 18  1]
+ [ 4  9 23  8]
+ [ 1  1  6 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet18', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8925100355979702
+> slide acc:  0.5960591133004927
+> slide sco:  0.884729064039409
+> slide cm : 
+[[38 21  7  1]
+ [18 29 10  1]
+ [ 4  9 27  4]
+ [ 1  1  5 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet34', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8934742104067259
+> slide acc:  0.6354679802955665
+> slide sco:  0.8980295566502463
+> slide cm : 
+[[42 17  7  1]
+ [16 30 11  1]
+ [ 3  9 28  4]
+ [ 0  0  5 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet34', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8474255850942967
+> slide acc:  0.5221674876847291
+> slide sco:  0.8571428571428571
+> slide cm : 
+[[26 34  1  6]
+ [13 33  8  4]
+ [ 0  9 25 10]
+ [ 1  6  5 22]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet34', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.875015526774218
+> slide acc:  0.5960591133004927
+> slide sco:  0.8931034482758621
+> slide cm : 
+[[38 23  5  1]
+ [15 28 15  0]
+ [ 5  6 28  5]
+ [ 0  0  7 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet34', 'imagenet', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.901112625918352
+> slide acc:  0.5714285714285714
+> slide sco:  0.8837438423645321
+> slide cm : 
+[[36 25  4  2]
+ [16 30 12  0]
+ [ 3 15 23  3]
+ [ 1  2  4 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet34', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 25}
+best_score: 0.8634333106112247
+> slide acc:  0.5665024630541872
+> slide sco:  0.8684729064039409
+> slide cm : 
+[[36 26  2  3]
+ [11 36  9  2]
+ [ 8 15 16  5]
+ [ 0  2  5 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet34', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8970749072180565
+> slide acc:  0.5467980295566502
+> slide sco:  0.8684729064039409
+> slide cm : 
+[[31 26  7  3]
+ [15 29 13  1]
+ [ 2 10 27  5]
+ [ 0  3  7 24]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'imagenet', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8734174051351966
+> slide acc:  0.6206896551724138
+> slide sco:  0.8886699507389163
+> slide cm : 
+[[32 27  7  1]
+ [14 38  5  1]
+ [ 4  7 28  5]
+ [ 2  2  2 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9008657123381051
+> slide acc:  0.6305418719211823
+> slide sco:  0.900985221674877
+> slide cm : 
+[[39 23  4  1]
+ [14 29 15  0]
+ [ 5  5 30  4]
+ [ 1  0  3 30]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8654911762478225
+> slide acc:  0.5911330049261084
+> slide sco:  0.8837438423645321
+> slide cm : 
+[[40 19  5  3]
+ [20 31  5  2]
+ [ 2 11 25  6]
+ [ 0  2  8 24]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8665182155570704
+> slide acc:  0.6305418719211823
+> slide sco:  0.8950738916256159
+> slide cm : 
+[[43 18  4  2]
+ [15 32 11  0]
+ [ 5  8 26  5]
+ [ 0  1  6 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8485450276452322
+> slide acc:  0.5467980295566502
+> slide sco:  0.854679802955665
+> slide cm : 
+[[40 22  3  2]
+ [17 26 14  1]
+ [10  9 20  5]
+ [ 1  5  3 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9116246307657351
+> slide acc:  0.5566502463054187
+> slide sco:  0.8763546798029558
+> slide cm : 
+[[30 31  4  2]
+ [11 31 13  3]
+ [ 3 11 24  6]
+ [ 1  1  4 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'mtdp', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8633000075740362
+> slide acc:  0.5714285714285714
+> slide sco:  0.8630541871921183
+> slide cm : 
+[[44 17  4  2]
+ [13 34 10  1]
+ [ 5 20 13  6]
+ [ 1  4  4 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'mtdp', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8803279557676286
+> slide acc:  0.5812807881773399
+> slide sco:  0.8738916256157637
+> slide cm : 
+[[37 22  5  3]
+ [17 29 10  2]
+ [ 4  7 26  7]
+ [ 2  0  6 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'mtdp', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8681004317200637
+> slide acc:  0.5073891625615764
+> slide sco:  0.8581280788177341
+> slide cm : 
+[[29 27  8  3]
+ [17 32  9  0]
+ [ 1 12 22  9]
+ [ 1  3 10 20]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'mtdp', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.858772248731349
+> slide acc:  0.5615763546798029
+> slide sco:  0.8753694581280789
+> slide cm : 
+[[36 26  3  2]
+ [16 31 11  0]
+ [ 7 13 20  4]
+ [ 0  4  3 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict', 'resnet50', 'mtdp', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8958229190335529
+> slide acc:  0.6059113300492611
+> slide sco:  0.8852216748768472
+> slide cm : 
+[[38 18 10  1]
+ [19 29  9  1]
+ [ 4  8 28  4]
+ [ 0  0  6 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'imagenet', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8986450049231236
+> slide acc:  0.6009852216748769
+> slide sco:  0.8911330049261084
+> slide cm : 
+[[32 30  4  1]
+ [12 35 11  0]
+ [ 8  7 25  4]
+ [ 1  0  3 30]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.866113004620162
+> slide acc:  0.5862068965517241
+> slide sco:  0.887192118226601
+> slide cm : 
+[[40 24  2  1]
+ [15 27 13  3]
+ [ 5 10 25  4]
+ [ 0  2  5 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9025729000984624
+> slide acc:  0.6206896551724138
+> slide sco:  0.8960591133004928
+> slide cm : 
+[[36 23  6  2]
+ [14 29 14  1]
+ [ 3  6 29  6]
+ [ 0  0  2 32]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8704582291903357
+> slide acc:  0.5812807881773399
+> slide sco:  0.887192118226601
+> slide cm : 
+[[39 25  2  1]
+ [19 31  8  0]
+ [ 7 11 20  6]
+ [ 1  3  2 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8810520336287209
+> slide acc:  0.5960591133004927
+> slide sco:  0.89064039408867
+> slide cm : 
+[[31 30  4  2]
+ [ 9 34 15  0]
+ [ 4  7 27  6]
+ [ 0  2  3 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8996356888585927
+> slide acc:  0.6108374384236454
+> slide sco:  0.8857142857142858
+> slide cm : 
+[[42 17  7  1]
+ [17 32  9  0]
+ [ 6 12 22  4]
+ [ 0  1  5 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'mtdp', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9015049609937135
+> slide acc:  0.6206896551724138
+> slide sco:  0.8960591133004926
+> slide cm : 
+[[34 26  5  2]
+ [11 37 10  0]
+ [ 4  8 26  6]
+ [ 0  1  4 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'mtdp', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.875129894720897
+> slide acc:  0.6108374384236454
+> slide sco:  0.8773399014778325
+> slide cm : 
+[[42 17  5  3]
+ [15 31 12  0]
+ [ 6  8 24  6]
+ [ 1  1  5 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'mtdp', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.898192834961751
+> slide acc:  0.6206896551724138
+> slide sco:  0.9029556650246306
+> slide cm : 
+[[41 23  2  1]
+ [17 33  7  1]
+ [ 3  9 27  5]
+ [ 1  2  6 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'mtdp', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.890365825948648
+> slide acc:  0.6305418719211823
+> slide sco:  0.8950738916256157
+> slide cm : 
+[[40 18  7  2]
+ [13 29 16  0]
+ [ 1  5 32  6]
+ [ 0  1  6 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'mtdp', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9049246383397712
+> slide acc:  0.6354679802955665
+> slide sco:  0.8995073891625616
+> slide cm : 
+[[39 22  4  2]
+ [ 9 38 11  0]
+ [ 0 17 23  4]
+ [ 2  0  3 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'densenet121', 'mtdp', '1', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8648935847913352
+> slide acc:  0.6009852216748769
+> slide sco:  0.8866995073891627
+> slide cm : 
+[[39 23  4  1]
+ [13 31 12  2]
+ [ 4  8 25  7]
+ [ 0  3  4 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet18', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8761281526925698
+> slide acc:  0.5812807881773399
+> slide sco:  0.8807881773399016
+> slide cm : 
+[[37 22  8  0]
+ [16 33  8  1]
+ [ 5  9 22  8]
+ [ 1  0  7 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet18', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.876756797697493
+> slide acc:  0.6551724137931034
+> slide sco:  0.9029556650246306
+> slide cm : 
+[[41 20  5  1]
+ [10 36 11  1]
+ [ 2 10 28  4]
+ [ 0  2  4 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet18', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8905309399378931
+> slide acc:  0.6009852216748769
+> slide sco:  0.8768472906403942
+> slide cm : 
+[[34 24  7  2]
+ [11 37 10  0]
+ [ 5 10 25  4]
+ [ 1  2  5 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet18', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8652987957282436
+> slide acc:  0.5714285714285714
+> slide sco:  0.8724137931034484
+> slide cm : 
+[[37 24  3  3]
+ [11 34 12  1]
+ [ 4 12 20  8]
+ [ 1  2  6 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet18', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9018563962735742
+> slide acc:  0.5960591133004927
+> slide sco:  0.8852216748768473
+> slide cm : 
+[[39 19  7  2]
+ [18 30 10  0]
+ [ 2 10 27  5]
+ [ 1  1  7 25]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet34', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8975626751495872
+> slide acc:  0.625615763546798
+> slide sco:  0.9049261083743844
+> slide cm : 
+[[38 24  4  1]
+ [13 33 11  1]
+ [ 3 10 27  4]
+ [ 0  0  5 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet34', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8408808604105127
+> slide acc:  0.5073891625615764
+> slide sco:  0.8482758620689654
+> slide cm : 
+[[32 28  4  3]
+ [16 24 15  3]
+ [ 6  6 23  9]
+ [ 1  4  5 24]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet34', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8746565174581535
+> slide acc:  0.6157635467980296
+> slide sco:  0.9083743842364532
+> slide cm : 
+[[42 20  5  0]
+ [20 26 12  0]
+ [ 3  7 30  4]
+ [ 0  0  7 27]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet34', 'imagenet', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8971710974778458
+> slide acc:  0.5714285714285714
+> slide sco:  0.8704433497536946
+> slide cm : 
+[[33 25  7  2]
+ [12 31 15  0]
+ [ 4 13 24  3]
+ [ 2  1  3 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet34', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 25}
+best_score: 0.8660122699386503
+> slide acc:  0.6009852216748769
+> slide sco:  0.8763546798029557
+> slide cm : 
+[[39 23  2  3]
+ [ 7 38 11  2]
+ [ 5 17 17  5]
+ [ 1  1  4 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet34', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9008778307960312
+> slide acc:  0.5517241379310345
+> slide sco:  0.861576354679803
+> slide cm : 
+[[31 25  8  3]
+ [13 28 16  1]
+ [ 3  8 27  6]
+ [ 1  2  5 26]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'imagenet', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8692251760963418
+> slide acc:  0.6108374384236454
+> slide sco:  0.8891625615763546
+> slide cm : 
+[[38 22  5  2]
+ [13 31 13  1]
+ [ 4 10 25  5]
+ [ 0  1  3 30]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'imagenet', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9006157691433767
+> slide acc:  0.625615763546798
+> slide sco:  0.8960591133004926
+> slide cm : 
+[[37 24  5  1]
+ [13 31 14  0]
+ [ 4  5 31  4]
+ [ 2  0  4 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'imagenet', '3', '0.001')
+best_params: {'min_samples_leaf': 25}
+best_score: 0.8684662576687117
+> slide acc:  0.5615763546798029
+> slide sco:  0.8763546798029557
+> slide cm : 
+[[35 25  3  4]
+ [15 32 10  1]
+ [ 2  8 24 10]
+ [ 0  3  8 23]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'imagenet', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8666310686965085
+> slide acc:  0.6551724137931034
+> slide sco:  0.9078817733990149
+> slide cm : 
+[[42 22  2  1]
+ [11 35 12  0]
+ [ 6  7 27  4]
+ [ 0  1  4 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'imagenet', '1', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8542088919185036
+> slide acc:  0.5960591133004927
+> slide sco:  0.8773399014778326
+> slide cm : 
+[[39 23  3  2]
+ [12 32 14  0]
+ [ 7  8 22  7]
+ [ 1  3  2 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'imagenet', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9061932894039234
+> slide acc:  0.5862068965517241
+> slide sco:  0.8753694581280789
+> slide cm : 
+[[32 27  5  3]
+ [12 32 11  3]
+ [ 3 10 27  4]
+ [ 2  0  4 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'mtdp', '1', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8754881466333408
+> slide acc:  0.5960591133004927
+> slide sco:  0.8807881773399016
+> slide cm : 
+[[41 21  3  2]
+ [15 31 11  1]
+ [ 5 13 21  5]
+ [ 2  1  3 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'mtdp', '3', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8862296447777022
+> slide acc:  0.5763546798029556
+> slide sco:  0.8689655172413794
+> slide cm : 
+[[37 23  5  2]
+ [13 30 13  2]
+ [ 6  5 26  7]
+ [ 2  0  8 24]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'mtdp', '3', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8679762175263198
+> slide acc:  0.6059113300492611
+> slide sco:  0.8916256157635468
+> slide cm : 
+[[37 24  3  3]
+ [14 37  7  0]
+ [ 2  8 25  9]
+ [ 1  2  7 24]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'mtdp', '2', '0.001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8763553737786868
+> slide acc:  0.5862068965517241
+> slide sco:  0.8886699507389163
+> slide cm : 
+[[41 23  1  2]
+ [17 27 14  0]
+ [ 6 10 23  5]
+ [ 0  3  3 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas', 'resnet50', 'mtdp', '2', '0.0001')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8952033628720745
+> slide acc:  0.625615763546798
+> slide sco:  0.89064039408867
+> slide cm : 
+[[41 18  6  2]
+ [16 29 13  0]
+ [ 6  6 29  3]
+ [ 0  0  6 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict_ensemble', '1')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8729213057638414
+> slide acc:  0.6650246305418719
+> slide sco:  0.9049261083743844
+> slide cm : 
+[[42 21  1  3]
+ [11 39  7  1]
+ [ 4 11 25  4]
+ [ 0  2  3 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict_ensemble', '2')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.9047065060970991
+> slide acc:  0.6305418719211823
+> slide sco:  0.9068965517241381
+> slide cm : 
+[[36 25  6  0]
+ [15 35  7  1]
+ [ 3  7 29  5]
+ [ 0  1  5 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('cls_dict_ensemble', '3')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8955979701582975
+> slide acc:  0.6305418719211823
+> slide sco:  0.8940886699507389
+> slide cm : 
+[[44 18  3  2]
+ [16 30 11  1]
+ [ 3  5 32  4]
+ [ 0  4  8 22]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas_ensemble', '1')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8844951904870106
+> slide acc:  0.6650246305418719
+> slide sco:  0.9108374384236454
+> slide cm : 
+[[43 20  3  1]
+ [13 35 10  0]
+ [ 4  8 28  4]
+ [ 0  2  3 29]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas_ensemble', '2')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8907521017950465
+> slide acc:  0.6009852216748769
+> slide sco:  0.9014778325123153
+> slide cm : 
+[[39 25  3  0]
+ [16 30 12  0]
+ [ 5  9 25  5]
+ [ 1  0  5 28]]
+Fitting 5 folds for each of 6 candidates, totalling 30 fits
+-------------------------------------------------
+('probas_ensemble', '3')
+best_params: {'min_samples_leaf': 1}
+best_score: 0.8986487919412255
+> slide acc:  0.5911330049261084
+> slide sco:  0.8896551724137932
+> slide cm : 
+[[38 24  3  2]
+ [13 31 13  1]
+ [ 3 11 24  6]
+ [ 1  0  6 27]]
+cls_dict	densenet121	imagenet	1	0.0001	0.8966901461788988	0.8714285714285714
+cls_dict	densenet121	imagenet	2	0.001	0.879429675073847	0.8812807881773399
+cls_dict	densenet121	imagenet	3	0.0001	0.9000159054760282	0.8955665024630542
+cls_dict	densenet121	imagenet	1	0.001	0.8636817389987124	0.8748768472906405
+cls_dict	densenet121	imagenet	3	0.001	0.8831167158979021	0.8832512315270936
+cls_dict	densenet121	imagenet	2	0.0001	0.8988805574490646	0.8916256157635468
+cls_dict	densenet121	mtdp	2	0.0001	0.9023411345906235	0.9078817733990149
+cls_dict	densenet121	mtdp	2	0.001	0.8741407255926685	0.8719211822660099
+cls_dict	densenet121	mtdp	3	0.0001	0.9015042035900931	0.887192118226601
+cls_dict	densenet121	mtdp	3	0.001	0.8889949253957432	0.8950738916256157
+cls_dict	densenet121	mtdp	1	0.0001	0.9012141180034842	0.8862068965517241
+cls_dict	densenet121	mtdp	1	0.001	0.8622116185715368	0.884729064039409
+cls_dict	resnet18	imagenet	2	0.001	0.8644209649322125	0.8827586206896552
+cls_dict	resnet18	imagenet	1	0.001	0.859873513595395	0.8901477832512315
+cls_dict	resnet18	imagenet	2	0.0001	0.8928781337574794	0.8748768472906405
+cls_dict	resnet18	imagenet	3	0.001	0.8530864197530864	0.8566502463054187
+cls_dict	resnet18	imagenet	3	0.0001	0.8925100355979702	0.884729064039409
+cls_dict	resnet34	imagenet	2	0.0001	0.8934742104067259	0.8980295566502463
+cls_dict	resnet34	imagenet	3	0.001	0.8474255850942967	0.8571428571428571
+cls_dict	resnet34	imagenet	2	0.001	0.875015526774218	0.8931034482758621
+cls_dict	resnet34	imagenet	1	0.0001	0.901112625918352	0.8837438423645321
+cls_dict	resnet34	imagenet	1	0.001	0.8634333106112247	0.8684729064039409
+cls_dict	resnet34	imagenet	3	0.0001	0.8970749072180565	0.8684729064039409
+cls_dict	resnet50	imagenet	1	0.0001	0.8734174051351966	0.8886699507389163
+cls_dict	resnet50	imagenet	2	0.0001	0.9008657123381051	0.900985221674877
+cls_dict	resnet50	imagenet	3	0.001	0.8654911762478225	0.8837438423645321
+cls_dict	resnet50	imagenet	2	0.001	0.8665182155570704	0.8950738916256159
+cls_dict	resnet50	imagenet	1	0.001	0.8485450276452322	0.854679802955665
+cls_dict	resnet50	imagenet	3	0.0001	0.9116246307657351	0.8763546798029558
+cls_dict	resnet50	mtdp	1	0.0001	0.8633000075740362	0.8630541871921183
+cls_dict	resnet50	mtdp	3	0.0001	0.8803279557676286	0.8738916256157637
+cls_dict	resnet50	mtdp	3	0.001	0.8681004317200637	0.8581280788177341
+cls_dict	resnet50	mtdp	2	0.001	0.858772248731349	0.8753694581280789
+cls_dict	resnet50	mtdp	2	0.0001	0.8958229190335529	0.8852216748768472
+probas	densenet121	imagenet	1	0.0001	0.8986450049231236	0.8911330049261084
+probas	densenet121	imagenet	2	0.001	0.866113004620162	0.887192118226601
+probas	densenet121	imagenet	3	0.0001	0.9025729000984624	0.8960591133004928
+probas	densenet121	imagenet	1	0.001	0.8704582291903357	0.887192118226601
+probas	densenet121	imagenet	3	0.001	0.8810520336287209	0.89064039408867
+probas	densenet121	imagenet	2	0.0001	0.8996356888585927	0.8857142857142858
+probas	densenet121	mtdp	2	0.0001	0.9015049609937135	0.8960591133004926
+probas	densenet121	mtdp	2	0.001	0.875129894720897	0.8773399014778325
+probas	densenet121	mtdp	3	0.0001	0.898192834961751	0.9029556650246306
+probas	densenet121	mtdp	3	0.001	0.890365825948648	0.8950738916256157
+probas	densenet121	mtdp	1	0.0001	0.9049246383397712	0.8995073891625616
+probas	densenet121	mtdp	1	0.001	0.8648935847913352	0.8866995073891627
+probas	resnet18	imagenet	2	0.001	0.8761281526925698	0.8807881773399016
+probas	resnet18	imagenet	1	0.001	0.876756797697493	0.9029556650246306
+probas	resnet18	imagenet	2	0.0001	0.8905309399378931	0.8768472906403942
+probas	resnet18	imagenet	3	0.001	0.8652987957282436	0.8724137931034484
+probas	resnet18	imagenet	3	0.0001	0.9018563962735742	0.8852216748768473
+probas	resnet34	imagenet	2	0.0001	0.8975626751495872	0.9049261083743844
+probas	resnet34	imagenet	3	0.001	0.8408808604105127	0.8482758620689654
+probas	resnet34	imagenet	2	0.001	0.8746565174581535	0.9083743842364532
+probas	resnet34	imagenet	1	0.0001	0.8971710974778458	0.8704433497536946
+probas	resnet34	imagenet	1	0.001	0.8660122699386503	0.8763546798029557
+probas	resnet34	imagenet	3	0.0001	0.9008778307960312	0.861576354679803
+probas	resnet50	imagenet	1	0.0001	0.8692251760963418	0.8891625615763546
+probas	resnet50	imagenet	2	0.0001	0.9006157691433767	0.8960591133004926
+probas	resnet50	imagenet	3	0.001	0.8684662576687117	0.8763546798029557
+probas	resnet50	imagenet	2	0.001	0.8666310686965085	0.9078817733990149
+probas	resnet50	imagenet	1	0.001	0.8542088919185036	0.8773399014778326
+probas	resnet50	imagenet	3	0.0001	0.9061932894039234	0.8753694581280789
+probas	resnet50	mtdp	1	0.0001	0.8754881466333408	0.8807881773399016
+probas	resnet50	mtdp	3	0.0001	0.8862296447777022	0.8689655172413794
+probas	resnet50	mtdp	3	0.001	0.8679762175263198	0.8916256157635468
+probas	resnet50	mtdp	2	0.001	0.8763553737786868	0.8886699507389163
+probas	resnet50	mtdp	2	0.0001	0.8952033628720745	0.89064039408867
+cls_dict_ensemble	1	0.8729213057638414	0.9049261083743844
+cls_dict_ensemble	2	0.9047065060970991	0.9068965517241381
+cls_dict_ensemble	3	0.8955979701582975	0.8940886699507389
+probas_ensemble	1	0.8844951904870106	0.9108374384236454
+probas_ensemble	2	0.8907521017950465	0.9014778325123153
+probas_ensemble	3	0.8986487919412255	0.8896551724137932
+Best:  ('cls_dict', 'resnet50', 'imagenet', '3', '0.0001')
+> val score : 0.9116246307657351
+> test score: 0.8763546798029558
