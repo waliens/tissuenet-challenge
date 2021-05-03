@@ -6,6 +6,7 @@ import torch
 import timeit
 from PIL import Image
 import cv2
+from shapely.ops import cascaded_union
 from skimage.filters import threshold_otsu
 from shapely.affinity import affine_transform
 from shapely.geometry import box
@@ -190,6 +191,24 @@ def foreground_detect(slide_path, fg_detect_rescale_to=2048, morph_iter=3, area_
        affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
        for p in checked_for_merge
     ]
+
+
+def convex_white_detect(slide_path, fg_detect_rescale_to=2048):
+    zoom_level = determine_tissue_extract_level(slide_path, desired_processing_size=fg_detect_rescale_to)
+    vips_image = pyvips.Image.new_from_file(slide_path, page=zoom_level)
+    height, width, bands = vips_image.height, vips_image.width, vips_image.bands
+    image = np.ndarray(
+        buffer=vips_image.write_to_memory(),
+        dtype=np.uint8,
+        shape=(height, width, bands)
+    )
+    image = np.mean(image, axis=2).astype(np.uint8)  # grayscale
+    mask = np.logical_and(image > 75, image < 250).astype(np.uint8)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, ksize=(10, 10))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    objects = mask_to_objects_2d(mask)
+    unioned = cascaded_union([p for p, _ in objects])
+    return affine_transform(unioned.convex_hull, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
 
 
 def classify(slide_path, model, device, transform, batch_size=16, tile_size=512, tile_overlap=0, num_workers=0, zoom_level=2, n_classes=4, fg_detect_rescale_to=2048):

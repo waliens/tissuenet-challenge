@@ -38,12 +38,10 @@ def main(argv):
     parser.add_argument("-d", "--device", dest="device", default="cuda:0")
     parser.add_argument("-j", "--n_jobs", dest="n_jobs", default=5, type=int)
     parser.add_argument("-a", "--architecture", dest="architecture", default="resnet50")
-    parser.add_argument("-t", "--train_size", dest="train_size", default=0.7, type=float)
     parser.add_argument("-s", "--tile_size", dest="tile_size", default=512, type=int)
     parser.add_argument("-o", "--overlap", dest="overlap", default=0, type=int)
     parser.add_argument("-z", "--zoom_level", dest="zoom_level", default=0, type=int)
     parser.add_argument("-b", "--batch_size", dest="batch_size", default=32, type=int)
-    parser.add_argument("-r", "--random_seed", dest="random_seed", default=42, type=int)
     parser.add_argument("-i", "--image_path", dest="image_path", default=".")
     parser.add_argument("-m", "--metadata_path", dest="metadata_path", default=".")
     parser.add_argument("-l", "--model_path", dest="model_path", default=".")
@@ -125,4 +123,7 @@ def main(argv):
 
 if __name__ == "__main__":
     import sys
-    main(sys.argv[1:])
+    returned = main(sys.argv[1:])
+    np.save("final_probas.npy", returned["probas"])
+    np.save("final_filenames.npy", np.array(returned["filenames"]))
+    np.save("final_tiles.npy", np.array(returned["tiles"]))

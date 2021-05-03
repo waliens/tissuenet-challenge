@@ -1,6 +1,7 @@
 import csv
 import os
 import pickle
+from functools import partial
 from shutil import copyfile
 
 import numpy as np
@@ -18,6 +19,31 @@ import pyvips
 
 from assets.inference import determine_tissue_extract_level
 from svm_classifier_train import compute_challenge_score, group_per_slide
+
+def one_hot(probas, dtype=np.int):
+    classes = np.argmax(probas, axis=1)
+    mat = np.zeros(probas.shape, dtype=dtype)
+    mat[np.arange(classes.size), classes] = 1
+    return mat
+
+
+def aggregate_by_filename(filenames, probas, trans_fn=None, avg=False):
+    if trans_fn is None:
+        trans_fn = lambda i: i
+    probas = trans_fn(probas)
+    filenames = np.array(filenames)
+    unique_f, counts = np.unique(filenames, return_counts=True)
+    aggr = np.zeros([unique_f.shape[0], 4], dtype=np.float)
+    for i, filename in enumerate(unique_f):
+        mask = filenames == filename
+        if np.any(mask):
+            aggr[i] = np.sum(probas[filenames == filename], axis=0)
+        else:
+            aggr[i] = [1.0, 0.0, 0.0, 0.0]
+    if avg:
+        aggr /= counts[..., np.newaxis]
+    return aggr, unique_f
+
 
 
 def get_results(path):
@@ -145,31 +171,24 @@ def move_samples(mask, y_true, y_pred, slides, src_path, dst_folder):
 def main():
     slidenames, slide2annots, slide2cls = group_per_slide("/scratch/users/rmormont/tissuenet/metadata/")
 
-    per_filename, cls_dict, probas_dict = get_results("results.csv")
+    probas = np.load("final_probas.npy")
+    filenames = np.load("final_filenames.npy")
 
-    RANDOM_SEED = 42
-    TRAIN_SIZE = 0.7
     N_JOBS = 4
 
-    random_state = np.random.RandomState(RANDOM_SEED)
-    train_slides, test_slides = train_test_split(slidenames, test_size=1 - TRAIN_SIZE, random_state=random_state)
-
-    eval_max_rank(test_slides, cls_dict, slide2cls)
-
-    x_train, y_train = get_dataset_probas_dict(train_slides, probas_dict, slide2cls, norm=False)
-    x_test, y_test = get_dataset_probas_dict(test_slides, probas_dict, slide2cls, norm=False)
+    x, x_files = aggregate_by_filename(filenames, probas, trans_fn=partial(one_hot, dtype=np.int), avg=False)
+    y = np.array([slide2cls[f] for f in x_files])
 
     rf = RandomForestClassifier(n_estimators=1000, max_features=None, random_state=RandomState(42))
-    param_grid = {"min_samples_leaf": [1, 25, 50, 100, 250, 500]}
+    param_grid = {"min_samples_leaf": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30]}
     folder = KFold(n_splits=5)
     grid = GridSearchCV(rf, param_grid, scoring=make_scorer(compute_challenge_score), n_jobs=N_JOBS, verbose=10, refit=True, cv=folder)
-    grid.fit(x_train, y_train)
+    grid.fit(x, y)
     print("best_params:", grid.best_params_)
     print("best_score:", grid.best_score_)
-    y_pred = grid.best_estimator_.predict(x_test)
-    print_eval(y_test, y_pred)
 
-    val_names = np.array(test_slides)
+    with open("final_random_forest.pkl", "wb+") as file:
+        pickle.dump(grid.best_estimator_, file)
 
     src_path = "/scratch/users/rmormont/tissuenet/pred"
     # move_samples(y_test == y_pred, y_test, y_pred, val_names, src_path, "goodclassif")
@@ -177,9 +196,7 @@ def main():
 
     # rf.set_params(**grid.best_params_)
     # rf.fit(np.vstack([x_train, x_test]), np.hstack([y_train, y_test]))
-    #
-    # with open("random_forest.pkl", "wb+") as file:
-    #     pickle.dump(rf, file)
+
 
     # base_path = "/scratch/users/rmormont/tissuenet/"
     # wsi_path = os.path.join(base_path, "wsis")

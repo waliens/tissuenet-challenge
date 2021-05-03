@@ -1,3 +1,4 @@
+import itertools
 import os
 import numpy as np
 from clustertools import ParameterSet, ConstrainedParameterSet, Experiment, set_stdout_logging, CTParser, \
@@ -20,34 +21,39 @@ def cstrnt_pretraining(**kwargs):
 
 if __name__ == "__main__":
     # Define the parameter set: the domain each variable can take
-    datacube = build_datacube("tissuenet-e2e-train-2nd")
+    datacube = build_datacube("tissuenet-e2e-train-3rd")
 
     # zoom, arch, pretraining, lr
 
     param_set = ExplicitParameterSet()
 
-    for (zoom, arch, pretrained, lr), cube in datacube.iter_dimensions("zoom_level", "architecture", "pretrained", "learning_rate"):
-
-        for (batch_size,), batch_size_cube in cube.iter_dimensions("batch_size"):
-            if batch_size_cube("val_acc") is None:
+    base_params = ["architecture", "pretrained"]
+    aug_params = list(set(datacube.parameters).difference(base_params))
+    print(aug_params)
+    first_part = datacube(architecture="densenet121", pretrained="mtdp").iter_dimensions(*base_params)
+    second_part = datacube(architecture="densenet121", pretrained="imagenet").iter_dimensions(*base_params)
+    third_part = datacube(architecture="resnet34", pretrained="imagenet").iter_dimensions(*base_params)
+    for (arch, pretrained), cube in itertools.chain(first_part, second_part, third_part):
+        for aug_pvalues, aug_cube in cube.iter_dimensions(*aug_params):
+            if aug_cube("val_acc") is None:
                 continue
 
-            best_epoch = np.argmax(batch_size_cube("val_acc"))
+            filename = aug_cube("models")[-1]
 
-            filename = batch_size_cube("models")[best_epoch]
-
-            # print("best", best_epoch, filename, batch_size_cube["val_acc"][best_epoch])
+            print(arch, pretrained, " ".join(aug_pvalues), filename, aug_cube["val_acc"][-1])
             # print("\"{}\": {},".format(filename, lr))
 
             param_set.add_parameter_tuple(
                 architecture=arch,
-                zoom_level=int(zoom),
+                zoom_level=cube.metadata["zoom_level"],
                 model_filename=filename,
-                tile_size={1: 640, 2: 320, 3: 320}[int(zoom)],
+                tile_size=320,
                 train_size=0.8,
-                batch_size={1: 8, 2: 32,  3: 32}[int(zoom)],
+                batch_size=32,
                 random_seed=42
             )
+
+
 
     set_stdout_logging()
 
@@ -68,7 +74,7 @@ if __name__ == "__main__":
 
     print(environment)
     # Wrap it together as an experiment
-    experiment = Experiment("tissuenet-e2e-eval-2nd", param_set, CliComputationFactory(main, **env))
+    experiment = Experiment("tissuenet-e2e-eval-3rd", param_set, CliComputationFactory(main, **env))
 
     # Finally run the experiment
     environment.run(experiment)
