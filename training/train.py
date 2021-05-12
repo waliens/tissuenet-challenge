@@ -22,8 +22,9 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 
-from dataset import RemoteAnnotationTrainDataset, segmentation_transform, predict_roi, AnnotationCrop
-from unet import Unet
+from augment import get_aug_transforms
+from dataset import RemoteAnnotationTrainDataset, predict_roi, AnnotationCrop
+from unet import Unet, DiceWithLogitsLoss
 
 
 def soft_dice_coefficient(y_true, y_pred, epsilon=1e-6):
@@ -116,9 +117,14 @@ def main(argv):
         parser.add_argument("-o", "--tile_overlap", dest="tile_overlap", default=0, type=int)
         parser.add_argument("-t", "--tile_size", dest="tile_size", default=256, type=int)
         parser.add_argument("-z", "--zoom_level", dest="zoom_level", default=0, type=int)
-        parser.add_argument("-l", "--loss", dest="loss", default="")
+        parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
+        parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
+        parser.add_argument("--aug_hed_bias_range", dest="aug_hed_bias_range", type=float, default=0.025)
+        parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
+        parser.add_argument("--aug_blur_sigma_extent", dest="aug_blur_sigma_extent", type=float, default=0.1)
+        parser.add_argument("--aug_noise_var_extent", dest="aug_noise_var_extent", type=float, default=0.1)
         parser.add_argument("--data_path", "--dpath", dest="data_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-w", "--working_path", "--wpath", dest="working_path",
@@ -164,15 +170,16 @@ def main(argv):
         for crop in train_crops + val_crops:
             crop.download()
 
-        np.random.seed(42)
-        dataset = RemoteAnnotationTrainDataset(train_crops, seg_trans=segmentation_transform)
-        loader = DataLoader(
-            dataset,
-            shuffle=True,
-            batch_size=args.batch_size,
-            num_workers=args.n_jobs,
-            worker_init_fn=worker_init
-        )
+        struct, visual = get_aug_transforms(
+            aug_noise_var_extent=args.aug_hed_bias_range,
+            aug_blur_sigma_extent=args.aug_hed_coef_range,
+            aug_hed_bias_range=args.aug_blur_sigma_extent,
+            aug_hed_coef_range=args.aug_noise_var_extent,
+            seed=args.rseed)
+
+        dataset = RemoteAnnotationTrainDataset(train_crops, visual_trans=visual, struct_trans=struct)
+        loader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size,
+                            num_workers=args.n_jobs, worker_init_fn=worker_init)
 
         # network
         device = torch.device(args.device)
@@ -181,13 +188,16 @@ def main(argv):
         unet.to(device)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
-        loss_fn = BCEWithLogitsLoss(reduction="mean")
+
+        loss_fn = {
+            "bc": BCEWithLogitsLoss(reduction="mean"),
+            "dice": DiceWithLogitsLoss(reduction="mean")
+        }[args.loss]
 
         results = {
             "train_losses": [],
             "val_losses": [],
             "val_dice": [],
-            "val_hausdorff": [],
             "val_metrics": [],
             "save_path": []
         }

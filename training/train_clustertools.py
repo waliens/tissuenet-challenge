@@ -31,7 +31,8 @@ if __name__ == "__main__":
     param_set.add_parameters(tile_size=[512, 256])
     param_set.add_parameters(lr=[0.001])
     param_set.add_parameters(init_fmaps=[8])
-    param_set.add_parameters(zoom_level=[0, 1, 2])
+    param_set.add_parameters(zoom_level=[0, 1])
+    param_set.add_parameters(loss=["bce", "dice", "both"])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
@@ -39,7 +40,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("thyroid-unet-training-dice", param_set, make_build_fn(**env_params))
+    experiment = Experiment("thyroid-unet-training", param_set, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)

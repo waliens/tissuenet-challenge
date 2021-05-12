@@ -15,17 +15,6 @@ from sldc.image import FixedSizeTileTopology, DefaultTileBuilder
 from sldc_cytomine import CytomineTileBuilder, CytomineSlide
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
-from torchvision import transforms
-from torchvision.transforms.functional import vflip, hflip
-
-
-def segmentation_transform(*images):
-    if np.random.rand() > 0.5:
-        images = (vflip(i) for i in images)
-    if np.random.rand() > 0.5:
-        images = (hflip(i) for i in images)
-    images = (transforms.ToTensor()(i) for i in images)
-    return images
 
 
 class PilImage(sldc.Image):
@@ -195,19 +184,19 @@ class AnnotationCrop(object):
 
 
 class RemoteAnnotationTrainDataset(Dataset):
-    def __init__(self, crops, in_trans=None, seg_trans=None):
+    def __init__(self, crops, visual_trans=None, struct_trans=None):
         self._crops = crops
-        self._seg_trans = seg_trans
-        self._in_trans = in_trans
+        self._stuct_trans = struct_trans
+        self._visual_trans = visual_trans
 
     def __getitem__(self, item):
         annotation_crop = self._crops[item]
         image, mask = annotation_crop.random_crop_and_mask()
 
-        if self._seg_trans is not None:
-            image, mask = self._seg_trans(image, mask)
-        if self._in_trans is not None:
-            image = self._in_trans(image)
+        if self._stuct_trans is not None:
+            image, mask = self._stuct_trans(image, mask)
+        if self._visual_trans is not None:
+            image = self._visual_trans(image)
 
         return image, mask
 
