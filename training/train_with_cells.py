@@ -10,7 +10,7 @@ import numpy as np
 from clustertools import Computation
 from clustertools.storage import PickleStorage
 from cytomine import Cytomine
-from cytomine.models import ImageInstance
+from cytomine.models import AnnotationCollection, ImageInstance
 from joblib import delayed
 from shapely import wkt
 from shapely.affinity import affine_transform
@@ -23,7 +23,6 @@ from torchvision.transforms import transforms
 
 from augment import get_aug_transforms
 from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop
-from thyroid import get_pattern_train, get_thyroid_annotations, get_val_set, VAL_TEST_IDS, VAL_IDS
 from unet import Unet, DiceWithLogitsLoss
 
 
@@ -138,18 +137,29 @@ def main(argv):
         os.makedirs(args.working_path, exist_ok=True)
 
         # fetch annotations (filter val/test sets + other annotations)
-        all_annotations = get_thyroid_annotations()
-        train_collec = get_pattern_train(all_annotations)
-        val_rois, val_foreground = get_val_set(all_annotations)
-        train_wsi_ids = list({an.image for an in all_annotations}.difference(VAL_TEST_IDS))
-        val_wsi_ids = list(VAL_IDS)
+        all_annotations = AnnotationCollection(project=77150529, showWKT=True, showMeta=True, showTerm=True).fetch()
+        val_ids = {77150767, 77150761, 77150809}
+        test_ids = {77150623, 77150611, 77150755}
+        val_test_ids = val_ids.union(test_ids)
+        train_collection = all_annotations.filter(lambda a: (a.user in {55502856} and len(a.term) > 0
+                                                             and a.term[0] in {35777351, 35777321, 35777459}
+                                                             and a.image not in val_test_ids))
+        val_rois = all_annotations.filter(lambda a: (a.user in {142954314}
+                                                     and a.image in val_ids
+                                                     and len(a.term) > 0 and a.term[0] in {154890363}))
+        val_foreground = all_annotations.filter(lambda a: (a.user in {142954314}
+                                                           and a.image in val_ids
+                                                           and len(a.term) > 0 and a.term[0] in {154005477}))
+
+        train_wsi_ids = list({an.image for an in all_annotations}.difference(val_test_ids))
+        val_wsi_ids = list(val_ids)
 
         download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
         images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
 
         train_crops = [
             AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
-            for annot in train_collec
+            for annot in train_collection
         ]
         val_crops = [
             AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)

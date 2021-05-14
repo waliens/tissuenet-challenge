@@ -1,4 +1,5 @@
 import os
+from abc import abstractmethod
 
 import PIL
 import cv2
@@ -55,7 +56,17 @@ def convert_poly(p, zoom, im_height):
     return affine_transform(polygon, [1, 0, 0, -1, 0, im_height])
 
 
-class AnnotationCrop(object):
+class BaseAnnotationCrop(object):
+    @abstractmethod
+    def random_crop_and_mask(self):
+        pass
+
+    @abstractmethod
+    def crop_and_mask(self):
+        pass
+
+
+class AnnotationCrop(BaseAnnotationCrop):
     def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0):
         self._annotation = annotation
         self._tile_size = tile_size
@@ -147,6 +158,19 @@ class AnnotationCrop(object):
                 os.remove(filepath)
                 self.download()
 
+    def _robust_load_image(self):
+        attempts = 0
+        filepath = self._get_image_filepath()
+        while True:
+            try:
+                return Image.open(filepath)
+            except OSError as e:
+                if attempts > 3:
+                    raise e
+                print("recreate '{}'".format(filepath))
+                os.remove(filepath)
+                self.download()
+
     def random_crop_and_mask(self):
         """in image coordinate system"""
         (x_min, y_min), width, height = self._extract_image_box()
@@ -162,7 +186,15 @@ class AnnotationCrop(object):
         else:
             mask = rasterize([in_window], out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
 
-        return crop, Image.fromarray(mask.astype(np.uint8))
+        return (x, y, self._tile_size, self._tile_size), crop, Image.fromarray(mask.astype(np.uint8))
+
+    def crop_and_mask(self):
+        """in image coordinates system, get full crop and mask"""
+        (x_min, y_min), width, height = self._extract_image_box()
+        image = self._robust_load_image()
+        in_window = translate(self._polygon(), xoff=-x_min, yoff=-y_min)
+        mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8) * 255
+        return image, mask
 
     @property
     def sldc_image(self):
@@ -183,7 +215,33 @@ class AnnotationCrop(object):
         return DefaultTileBuilder()
 
 
-class RemoteAnnotationTrainDataset(Dataset):
+class AnnotationCropWithCue(BaseAnnotationCrop):
+    def __init__(self, crop: BaseAnnotationCrop, cue):
+        """
+        Parameters
+        ----------
+        crop: BaseAnnotationCrop
+        cue: ndarray
+            Probability map for the cue np.array of float in [0, 1]
+        """
+        self._crop = crop
+        self._cue = (cue * 255)
+
+    def random_crop_and_mask(self):
+        crop_location, crop, mask = self._crop.random_crop_and_mask()
+        (x, y), w, h = crop_location
+        final_mask = self._cue[y:(y+h), x:(x+w)]
+        final_mask[mask > 0] = 255
+        return crop_location, crop, final_mask
+
+    def crop_and_mask(self):
+        crop, mask = self.crop_and_mask()
+        final_mask = self._cue
+        final_mask[mask > 0] = 255
+        return crop, final_mask
+
+
+class RemoteAnnotationCropTrainDataset(Dataset):
     def __init__(self, crops, visual_trans=None, struct_trans=None):
         self._crops = crops
         self._stuct_trans = struct_trans
