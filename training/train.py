@@ -146,15 +146,8 @@ def main(argv):
 
         download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
         images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
-
-        train_crops = [
-            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
-            for annot in train_collec
-        ]
-        val_crops = [
-            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
-            for annot in val_rois
-        ]
+        train_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in train_collec]
+        val_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in val_rois]
 
         for crop in train_crops + val_crops:
             crop.download()

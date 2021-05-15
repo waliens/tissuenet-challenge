@@ -16,6 +16,7 @@ from sldc.image import FixedSizeTileTopology, DefaultTileBuilder
 from sldc_cytomine import CytomineTileBuilder, CytomineSlide
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
+from torchvision import transforms
 
 
 class PilImage(sldc.Image):
@@ -249,10 +250,11 @@ class RemoteAnnotationCropTrainDataset(Dataset):
 
     def __getitem__(self, item):
         annotation_crop = self._crops[item]
-        image, mask = annotation_crop.random_crop_and_mask()
+        _, image, mask = annotation_crop.random_crop_and_mask()
 
         if self._stuct_trans is not None:
-            image, mask = self._stuct_trans(image, mask)
+            image, mask = self._stuct_trans([image, mask])
+            mask = transforms.ToTensor()(mask)
         if self._visual_trans is not None:
             image = self._visual_trans(image)
 

@@ -51,7 +51,7 @@ class ToPillow(torch.nn.Module):
         return Image.fromarray((img * 255).astype(np.uint8))
 
 
-def multi_fn(*tensors, fn, random_state=None, p=0.5):
+def multi_fn(tensors, fn=None, random_state=None, p=0.5):
     rstate = check_random_state(random_state)
     if rstate.rand() > p:
         return (fn(t) for t in tensors)
@@ -83,4 +83,11 @@ def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
     ]
 
-    return struct_transform, visual_transform
+    return transforms.Compose(struct_transform), transforms.Compose(visual_transform)
+
+
+def get_norm_transform():
+    return [
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]

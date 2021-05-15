@@ -18,11 +18,12 @@ from sklearn import metrics
 from sldc import batch_split
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torchvision.transforms import transforms
 
-from augment import get_aug_transforms
-from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop
+from augment import get_aug_transforms, get_norm_transform
+from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, AnnotationCropWithCue
+from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
 from unet import Unet, DiceWithLogitsLoss
 
 
@@ -119,6 +120,7 @@ def main(argv):
         parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
         parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
+        parser.add_argument("--no_sparse_at_first", dest="no_sparse_at_first", action="store_true")
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--aug_hed_bias_range", dest="aug_hed_bias_range", type=float, default=0.025)
         parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
@@ -130,6 +132,7 @@ def main(argv):
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
+        parser.set_defaults(no_sparse_at_first=False)
         args, _ = parser.parse_known_args(argv)
 
         os.makedirs(args.save_path, exist_ok=True)
@@ -137,36 +140,21 @@ def main(argv):
         os.makedirs(args.working_path, exist_ok=True)
 
         # fetch annotations (filter val/test sets + other annotations)
-        all_annotations = AnnotationCollection(project=77150529, showWKT=True, showMeta=True, showTerm=True).fetch()
-        val_ids = {77150767, 77150761, 77150809}
-        test_ids = {77150623, 77150611, 77150755}
-        val_test_ids = val_ids.union(test_ids)
-        train_collection = all_annotations.filter(lambda a: (a.user in {55502856} and len(a.term) > 0
-                                                             and a.term[0] in {35777351, 35777321, 35777459}
-                                                             and a.image not in val_test_ids))
-        val_rois = all_annotations.filter(lambda a: (a.user in {142954314}
-                                                     and a.image in val_ids
-                                                     and len(a.term) > 0 and a.term[0] in {154890363}))
-        val_foreground = all_annotations.filter(lambda a: (a.user in {142954314}
-                                                           and a.image in val_ids
-                                                           and len(a.term) > 0 and a.term[0] in {154005477}))
-
-        train_wsi_ids = list({an.image for an in all_annotations}.difference(val_test_ids))
-        val_wsi_ids = list(val_ids)
+        all_annotations = get_thyroid_annotations()
+        pattern_collec = get_pattern_train(all_annotations)
+        cell_collec = get_cell_train(all_annotations)
+        val_rois, val_foreground = get_val_set(all_annotations)
+        train_wsi_ids = list({an.image for an in all_annotations}.difference(VAL_TEST_IDS))
+        val_wsi_ids = list(VAL_IDS)
 
         download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
         images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
 
-        train_crops = [
-            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
-            for annot in train_collection
-        ]
-        val_crops = [
-            AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level)
-            for annot in val_rois
-        ]
+        pattern_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in pattern_collec]
+        base_cell_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in cell_collec]
+        val_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in val_rois]
 
-        for crop in train_crops + val_crops:
+        for crop in pattern_crops + base_cell_crops + val_crops:
             crop.download()
 
         struct, visual = get_aug_transforms(
@@ -175,10 +163,6 @@ def main(argv):
             aug_hed_bias_range=args.aug_blur_sigma_extent,
             aug_hed_coef_range=args.aug_noise_var_extent,
             seed=args.rseed)
-
-        dataset = RemoteAnnotationCropTrainDataset(train_crops, visual_trans=visual, struct_trans=struct)
-        loader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size,
-                            num_workers=args.n_jobs, worker_init_fn=worker_init)
 
         # network
         device = torch.device(args.device)
@@ -189,9 +173,8 @@ def main(argv):
         optimizer = Adam(unet.parameters(), lr=args.lr)
 
         loss_fn = {
-            "bc": BCEWithLogitsLoss(reduction="mean"),
             "dice": DiceWithLogitsLoss(reduction="mean")
-        }[args.loss]
+        }.get(args.loss, BCEWithLogitsLoss(reduction="mean"))
 
         results = {
             "train_losses": [],
@@ -201,10 +184,20 @@ def main(argv):
             "save_path": []
         }
 
+        full_dataset = RemoteAnnotationCropTrainDataset(pattern_crops, visual_trans=visual, struct_trans=struct)
+        if args.no_sparse_at_first:
+            sparse_dataset = RemoteAnnotationCropTrainDataset([], visual_trans=visual, struct_trans=struct)
+        else:
+            sparse_dataset = RemoteAnnotationCropTrainDataset(base_cell_crops, visual_trans=visual, struct_trans=struct)
+
         for e in range(args.epochs):
             print("########################")
             print("        Epoch {}".format(e))
             print("########################")
+
+            concat_dataset = ConcatDataset([sparse_dataset, full_dataset])
+            loader = DataLoader(concat_dataset, shuffle=True, batch_size=args.batch_size,
+                                num_workers=args.n_jobs, worker_init_fn=worker_init)
 
             epoch_losses = list()
             unet.train()
@@ -231,7 +224,7 @@ def main(argv):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
                         roi, foregrounds, unet, device,
-                        in_trans=transforms.ToTensor(),
+                        in_trans=get_norm_transform(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
                         overlap=args.tile_overlap,
@@ -257,6 +250,22 @@ def main(argv):
             print("CM at 0.5 threshold")
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
+            print("------------------------------")
+            print("Improve sparse dataset")
+            new_crops = list()
+            for i, crop in enumerate(base_cell_crops):
+                crop, mask = crop.crop_and_mask()
+                y_pred, _ = predict_roi(
+                    roi, foregrounds, unet, device,
+                    in_trans=get_norm_transform(),
+                    batch_size=args.batch_size,
+                    tile_size=args.tile_size,
+                    overlap=args.tile_overlap,
+                    n_jobs=args.n_jobs,
+                    zoom_level=args.zoom_level
+                )
+                new_crops.append(AnnotationCropWithCue(crop=crop, cue=y_pred))
+            sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, visual_trans=visual, struct_trans=struct)
             print("------------------------------")
 
             filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level, args.tile_size)
