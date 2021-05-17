@@ -3,6 +3,7 @@ from cytomine.models import AnnotationCollection
 THYROID_PROJECT_ID = 77150529
 VAL_IDS = {77150767, 77150761, 77150809}
 TEST_IDS = {77150623, 77150611, 77150755}
+EXCLUDED_WSIS = {77151057}
 VAL_TEST_IDS = VAL_IDS.union(TEST_IDS)
 CDEGAND_ID = 55502856
 MTESTOURI_ID = 142954314
@@ -26,7 +27,7 @@ def get_val_set(annots):
 
 
 def get_train_annots(annots, terms):
-    return annots.filter(lambda a: (a.user in {CDEGAND_ID} and len(a.term) > 0 and a.term[0] in terms and a.image not in VAL_TEST_IDS))
+    return annots.filter(lambda a: (a.user in {CDEGAND_ID} and len(a.term) > 0 and a.term[0] in terms and a.image not in VAL_TEST_IDS and a.image not in EXCLUDED_WSIS))
 
 
 def get_pattern_train(annots):

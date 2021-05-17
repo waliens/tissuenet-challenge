@@ -14,6 +14,8 @@ from cytomine.models import AnnotationCollection, ImageInstance
 from joblib import delayed
 from shapely import wkt
 from shapely.affinity import affine_transform
+from shapely.geometry import box
+from skimage import io
 from sklearn import metrics
 from sldc import batch_split
 from torch.nn import BCEWithLogitsLoss
@@ -24,7 +26,7 @@ from torchvision.transforms import transforms
 from augment import get_aug_transforms, get_norm_transform
 from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, AnnotationCropWithCue
 from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
-from unet import Unet, DiceWithLogitsLoss
+from unet import Unet, DiceWithLogitsLoss, MergedLoss
 
 
 def soft_dice_coefficient(y_true, y_pred, epsilon=1e-6):
@@ -55,14 +57,16 @@ def torange0_1(t):
     return t / 255.0
 
 
-def find_intersecting_annotations(roi, annotations):
-    found = list()
-    roi_location = wkt.loads(roi.location)
-    for annot in annotations:
-        location = wkt.loads(annot.location)
-        if roi_location.intersects(location):
-            found.append(annot)
-    return found
+def generic_match_search(key_item, elements, item_fn, match_fn):
+    return [elem for elem in elements if match_fn(key_item, item_fn(elem))]
+
+
+def get_polygons_intersecting_crop_roi(crop, crops):
+    (x, y), width, height = crop.image_box
+    bbox = box(x, y, x + width, y + height)
+    return generic_match_search(bbox, crops,
+                                item_fn=lambda c: c.polygon,
+                                match_fn=lambda a, b: a.intersects(b))
 
 
 def worker_init(tid):
@@ -94,6 +98,12 @@ def polyref_proc2cyto(p, height_at_zoom_level, zoom_level=0):
     return affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
 
 
+def save_cues(path, crops_with_cues):
+    os.makedirs(path, exist_ok=True)
+    for crop in crops_with_cues:
+        io.imsave(os.path.join(path, crop.annotation.originalFilename), crop.cue)
+
+
 def main(argv):
     """
 
@@ -120,8 +130,9 @@ def main(argv):
         parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
         parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
-        parser.add_argument("--no_sparse_at_first", dest="no_sparse_at_first", action="store_true")
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
+        parser.add_argument("--save_cues", dest="save_cues", action="store_true")
+        parser.add_argument("--sparse_start_after", dest="sparse_start_after", default=0, type=int)
         parser.add_argument("--aug_hed_bias_range", dest="aug_hed_bias_range", type=float, default=0.025)
         parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
         parser.add_argument("--aug_blur_sigma_extent", dest="aug_blur_sigma_extent", type=float, default=0.1)
@@ -132,8 +143,9 @@ def main(argv):
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
-        parser.set_defaults(no_sparse_at_first=False)
+        parser.set_defaults(save_cues=False)
         args, _ = parser.parse_known_args(argv)
+        print(args)
 
         os.makedirs(args.save_path, exist_ok=True)
         os.makedirs(args.data_path, exist_ok=True)
@@ -141,8 +153,9 @@ def main(argv):
 
         # fetch annotations (filter val/test sets + other annotations)
         all_annotations = get_thyroid_annotations()
-        pattern_collec = get_pattern_train(all_annotations)
-        cell_collec = get_cell_train(all_annotations)
+        pattern_collec = get_pattern_train(all_annotations)[:5]
+        cell_collec = get_cell_train(all_annotations)[:5]
+        train_collec = pattern_collec + cell_collec
         val_rois, val_foreground = get_val_set(all_annotations)
         train_wsi_ids = list({an.image for an in all_annotations}.difference(VAL_TEST_IDS))
         val_wsi_ids = list(VAL_IDS)
@@ -150,19 +163,36 @@ def main(argv):
         download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
         images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
 
-        pattern_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in pattern_collec]
-        base_cell_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in cell_collec]
-        val_crops = [AnnotationCrop(images[annot.image], annot, download_path, args.tile_size, zoom_level=args.zoom_level) for annot in val_rois]
+        print("find crops intersecting ROIs")
+        match_params = {
+            "item_fn": lambda a: wkt.loads(a.location),
+            "match_fn": lambda a, b: a.intersects(b)
+        }
+        print("base cell crops... ", end="", flush=True)
+        intersecting = {
+            annot.id: generic_match_search(box(*wkt.loads(annot.location).bounds), train_collec, **match_params)
+            for annot in train_collec
+        }
+        print("done")
+        print("validation rois... ", end="", flush=True)
+        val_rois_to_intersect = {
+            roi.id: generic_match_search(wkt.loads(roi.location), val_foreground, **match_params)
+            for roi in val_rois
+        }
+        print("done")
+
+        pattern_crops = [AnnotationCrop(
+            images[annot.image], annot, download_path, args.tile_size,
+            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in pattern_collec][:5]
+        base_cell_crops = [AnnotationCrop(
+            images[annot.image], annot, download_path, args.tile_size,
+            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in cell_collec][:5]
+        val_crops = [AnnotationCrop(
+            images[annot.image], annot, download_path, args.tile_size,
+            zoom_level=args.zoom_level) for annot in val_rois][:5]
 
         for crop in pattern_crops + base_cell_crops + val_crops:
             crop.download()
-
-        struct, visual = get_aug_transforms(
-            aug_noise_var_extent=args.aug_hed_bias_range,
-            aug_blur_sigma_extent=args.aug_hed_coef_range,
-            aug_hed_bias_range=args.aug_blur_sigma_extent,
-            aug_hed_coef_range=args.aug_noise_var_extent,
-            seed=args.rseed)
 
         # network
         device = torch.device(args.device)
@@ -173,7 +203,8 @@ def main(argv):
         optimizer = Adam(unet.parameters(), lr=args.lr)
 
         loss_fn = {
-            "dice": DiceWithLogitsLoss(reduction="mean")
+            "dice": DiceWithLogitsLoss(reduction="mean"),
+            "both": MergedLoss(BCEWithLogitsLoss(reduction="mean"), DiceWithLogitsLoss(reduction="mean"))
         }.get(args.loss, BCEWithLogitsLoss(reduction="mean"))
 
         results = {
@@ -184,11 +215,24 @@ def main(argv):
             "save_path": []
         }
 
-        full_dataset = RemoteAnnotationCropTrainDataset(pattern_crops, visual_trans=visual, struct_trans=struct)
-        if args.no_sparse_at_first:
-            sparse_dataset = RemoteAnnotationCropTrainDataset([], visual_trans=visual, struct_trans=struct)
+        struct, visual = get_aug_transforms(
+            aug_noise_var_extent=args.aug_hed_bias_range,
+            aug_blur_sigma_extent=args.aug_hed_coef_range,
+            aug_hed_bias_range=args.aug_blur_sigma_extent,
+            aug_hed_coef_range=args.aug_noise_var_extent,
+            seed=args.rseed)
+
+        trans_dict = {
+            "image_trans": visual,
+            "both_trans": struct,
+            "mask_trans": transforms.ToTensor()
+        }
+
+        full_dataset = RemoteAnnotationCropTrainDataset(pattern_crops, **trans_dict)
+        if args.sparse_start_after >= 0:
+            sparse_dataset = RemoteAnnotationCropTrainDataset([], **trans_dict)
         else:
-            sparse_dataset = RemoteAnnotationCropTrainDataset(base_cell_crops, visual_trans=visual, struct_trans=struct)
+            sparse_dataset = RemoteAnnotationCropTrainDataset(base_cell_crops, **trans_dict)
 
         for e in range(args.epochs):
             print("########################")
@@ -220,10 +264,9 @@ def main(argv):
             val_cm = np.zeros([len(val_rois), 2, 2], dtype=np.int)
 
             for i, roi in enumerate(val_crops):
-                foregrounds = find_intersecting_annotations(roi.annotation, val_foreground)
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        roi, foregrounds, unet, device,
+                        roi, val_rois_to_intersect[roi.annotation.id], unet, device,
                         in_trans=get_norm_transform(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
@@ -250,22 +293,28 @@ def main(argv):
             print("CM at 0.5 threshold")
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
-            print("------------------------------")
-            print("Improve sparse dataset")
-            new_crops = list()
-            for i, crop in enumerate(base_cell_crops):
-                crop, mask = crop.crop_and_mask()
-                y_pred, _ = predict_roi(
-                    roi, foregrounds, unet, device,
-                    in_trans=get_norm_transform(),
-                    batch_size=args.batch_size,
-                    tile_size=args.tile_size,
-                    overlap=args.tile_overlap,
-                    n_jobs=args.n_jobs,
-                    zoom_level=args.zoom_level
-                )
-                new_crops.append(AnnotationCropWithCue(crop=crop, cue=y_pred))
-            sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, visual_trans=visual, struct_trans=struct)
+            if args.sparse_start_after >= e:
+                print("------------------------------")
+                print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
+                new_crops = list()
+                for i, crop in enumerate(base_cell_crops):
+                    y_pred, _ = predict_roi(
+                        crop, crop.intersecting + [crop.annotation], unet, device,
+                        in_trans=get_norm_transform(),
+                        batch_size=args.batch_size,
+                        tile_size=args.tile_size,
+                        overlap=args.tile_overlap,
+                        n_jobs=args.n_jobs,
+                        zoom_level=args.zoom_level
+                    )
+                    print("\r{:3.2f}%".format((i + 1) * 100 / len(base_cell_crops)), end="")
+                    new_crops.append(AnnotationCropWithCue(crop=crop, cue=y_pred))
+                print()
+                if args.save_cues:
+                    cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
+                    print("save cues for epoch {} at '{}'".format(e, cue_save_path))
+                    save_cues(cue_save_path, new_crops)
+                sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, **trans_dict)
             print("------------------------------")
 
             filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level, args.tile_size)
@@ -291,7 +340,9 @@ class TrainComputation(Computation):
         self._cytomine_host = host
         self._data_path = data_path
 
-    def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0):
+    def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0,
+            sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
+            aug_noise_var_extent=0.1, save_cues=False, loss="bce"):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -308,7 +359,15 @@ class TrainComputation(Computation):
                 "--data_path", str(self._data_path),
                 "--working_path", os.path.join(os.environ["SCRATCH"], os.environ["SLURM_JOB_ID"]),
                 "--save_path", str(self._save_path),
-                "--zoom_level", str(zoom_level)]
+                "--loss", str(loss),
+                "--zoom_level", str(zoom_level),
+                "--sparse_start_after", str(0),
+                "--aug_hed_bias_range", str(aug_hed_bias_range),
+                "--aug_hed_coef_range", str(aug_hed_coef_range),
+                "--aug_blur_sigma_extent", str(aug_blur_sigma_extent),
+                "--aug_noise_var_extent", str(aug_noise_var_extent)]
+        if save_cues:
+            argv.append("--save_cues")
         for k, v in main(argv).items():
             results[k] = v
 

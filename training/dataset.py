@@ -7,10 +7,12 @@ import math
 import numpy as np
 import sldc
 from PIL import Image
+from cytomine.models import Annotation
 from rasterio.features import rasterize
 from shapely import wkt
 from shapely.affinity import translate, affine_transform
 from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
 from sldc import TileTopology
 from sldc.image import FixedSizeTileTopology, DefaultTileBuilder
 from sldc_cytomine import CytomineTileBuilder, CytomineSlide
@@ -68,13 +70,15 @@ class BaseAnnotationCrop(object):
 
 
 class AnnotationCrop(BaseAnnotationCrop):
-    def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0):
+    def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0, intersecting=None):
         self._annotation = annotation
         self._tile_size = tile_size
         self._wsi = CytomineSlide(wsi, zoom_level=zoom_level)
         self._builder = CytomineTileBuilder(working_path, n_jobs=n_jobs)
         self._working_path = working_path
         self._zoom_level = zoom_level
+        self._other_annotations = [] if intersecting is None else intersecting
+        self._other_polygons = [self._annot2poly(a) for a in self._other_annotations]
 
     @property
     def wsi(self):
@@ -134,7 +138,10 @@ class AnnotationCrop(BaseAnnotationCrop):
         return self._download_image()
 
     def _polygon(self):
-        polygon = wkt.loads(self._annotation.location)
+        return self._annot2poly(self._annotation)
+
+    def _annot2poly(self, annot):
+        polygon = wkt.loads(annot.location)
         return convert_poly(polygon, self._zoom_level, self.wsi.height)
 
     def _crop_bounds(self):
@@ -177,25 +184,30 @@ class AnnotationCrop(BaseAnnotationCrop):
         (x_min, y_min), width, height = self._extract_image_box()
         x = np.random.randint(0, width - self._tile_size + 1)
         y = np.random.randint(0, height - self._tile_size + 1)
-
         crop = self._robust_load_crop(x, y)
-
-        translated = translate(self._polygon(), xoff=-(x_min + x), yoff=-(y_min + y))
-        in_window = box(0, 0, self._tile_size, self._tile_size).intersection(translated)
-        if in_window.is_empty:
-            mask = np.zeros((self._tile_size, self._tile_size), dtype=np.uint8)
-        else:
-            mask = rasterize([in_window], out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
-
+        mask = self._mask(x, y, self._tile_size, self._tile_size)
         return (x, y, self._tile_size, self._tile_size), crop, Image.fromarray(mask.astype(np.uint8))
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
-        (x_min, y_min), width, height = self._extract_image_box()
+        _, width, height = self._extract_image_box()
         image = self._robust_load_image()
-        in_window = translate(self._polygon(), xoff=-x_min, yoff=-y_min)
-        mask = rasterize([in_window], out_shape=(height, width), fill=0, dtype=np.uint8) * 255
-        return image, mask
+        mask = self._mask(0, 0, width, height)
+        return image, Image.fromarray(mask.astype(np.uint8))
+
+    def _mask(self, window_x, window_y, window_width, window_height):
+        (crop_x, crop_y), crop_width, crop_height = self.image_box
+        ground_truth = [self._polygon()] + self._other_polygons
+        window = box(0, 0, window_width, window_height)
+        fg = [translate(g, xoff=-(window_x + crop_x), yoff=-(window_y + crop_y)).intersection(window)
+              for g in ground_truth]
+        fg = [p for p in fg if not p.is_empty]
+        mask = rasterize(fg, out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
+        return mask
+
+    @property
+    def intersecting(self):
+        return self._other_annotations
 
     @property
     def sldc_image(self):
@@ -230,33 +242,35 @@ class AnnotationCropWithCue(BaseAnnotationCrop):
 
     def random_crop_and_mask(self):
         crop_location, crop, mask = self._crop.random_crop_and_mask()
-        (x, y), w, h = crop_location
+        x, y, w, h = crop_location
         final_mask = self._cue[y:(y+h), x:(x+w)]
-        final_mask[mask > 0] = 255
-        return crop_location, crop, final_mask
+        final_mask[np.asarray(mask) > 0] = 255
+        return crop_location, crop, Image.fromarray(final_mask.astype(np.uint8), "L")
 
     def crop_and_mask(self):
-        crop, mask = self.crop_and_mask()
+        crop, mask = self._crop.crop_and_mask()
         final_mask = self._cue
-        final_mask[mask > 0] = 255
-        return crop, final_mask
+        final_mask[np.asarray(mask) > 0] = 255
+        return crop, Image.fromarray(final_mask)
 
 
 class RemoteAnnotationCropTrainDataset(Dataset):
-    def __init__(self, crops, visual_trans=None, struct_trans=None):
+    def __init__(self, crops, image_trans=None, both_trans=None, mask_trans=None):
         self._crops = crops
-        self._stuct_trans = struct_trans
-        self._visual_trans = visual_trans
+        self._both_trans = both_trans
+        self._image_trans = image_trans
+        self._mask_trans = mask_trans
 
     def __getitem__(self, item):
         annotation_crop = self._crops[item]
         _, image, mask = annotation_crop.random_crop_and_mask()
 
-        if self._stuct_trans is not None:
-            image, mask = self._stuct_trans([image, mask])
-            mask = transforms.ToTensor()(mask)
-        if self._visual_trans is not None:
-            image = self._visual_trans(image)
+        if self._both_trans is not None:
+            image, mask = self._both_trans([image, mask])
+        if self._image_trans is not None:
+            image = self._image_trans(image)
+        if self._mask_trans is not None:
+            mask = self._mask_trans(mask)
 
         return image, mask
 
@@ -285,7 +299,7 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     ----------
     roi: AnnotationCrop
         The polygon representing the roi to process
-    ground_truth: iterable of Annotation
+    ground_truth: iterable of Annotation|Polygon
         The ground truth annotations
     model: nn.Module
         Segmentation network. Takes a batch of _images as input and outputs the foreground probability for all pixels
@@ -314,7 +328,8 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
 
     # build ground truth
     roi_poly = roi.polygon
-    ground_truth = [convert_poly(wkt.loads(g.location), zoom_level, roi.wsi.height) for g in ground_truth]
+    ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
+    ground_truth = [convert_poly(g, zoom_level, roi.wsi.height) for g in ground_truth]
     translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
 
     y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)

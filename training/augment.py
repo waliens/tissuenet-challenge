@@ -51,7 +51,7 @@ class ToPillow(torch.nn.Module):
         return Image.fromarray((img * 255).astype(np.uint8))
 
 
-def multi_fn(tensors, fn=None, random_state=None, p=0.5):
+def random_multi_fn(tensors, fn=None, random_state=None, p=0.5):
     rstate = check_random_state(random_state)
     if rstate.rand() > p:
         return (fn(t) for t in tensors)
@@ -59,11 +59,28 @@ def multi_fn(tensors, fn=None, random_state=None, p=0.5):
         return tensors
 
 
+def multi_fn(tensors, fn=None):
+    return (fn(t) for t in tensors)
+
+
+def print_image(tensor):
+    print(tensor.shape)
+    return tensor
+
+"""
+import itertools
+import skimage
+for i, t in enumerate(itertools.permutations([0, 1, 2])):
+    skimage.io.imsave("aug" + str(i) + ".png", tensor[:, :, tuple(t)])
+for i in range(3):
+    skimage.io.imsave("aug-slice" + str(i) +  ".png", tensor[:, :, i])
+"""
+
 def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, seed=42):
     aug_rstate = check_random_state(seed)
     struct_transform = [
-        partial(multi_fn, fn=vflip, random_state=aug_rstate),
-        partial(multi_fn, fn=hflip, random_state=aug_rstate),
+        partial(random_multi_fn, fn=vflip, random_state=aug_rstate),
+        partial(random_multi_fn, fn=hflip, random_state=aug_rstate),
         # TODO elastic transform
         # partial(
         #     random_elastic_transform,
@@ -87,7 +104,7 @@ def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_
 
 
 def get_norm_transform():
-    return [
+    return transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]
+    ])

@@ -159,7 +159,7 @@ def main(argv):
             aug_hed_coef_range=args.aug_noise_var_extent,
             seed=args.rseed)
 
-        dataset = RemoteAnnotationCropTrainDataset(train_crops, visual_trans=visual, struct_trans=struct)
+        dataset = RemoteAnnotationCropTrainDataset(train_crops, image_trans=visual, both_trans=struct)
         loader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size,
                             num_workers=args.n_jobs, worker_init_fn=worker_init)
 
