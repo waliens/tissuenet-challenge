@@ -133,8 +133,9 @@ class AnnotationCrop(BaseAnnotationCrop):
             image.save(filepath)
         return filepath
 
-    def download(self):
-        print("download '{}'".format(self._get_image_filepath()))
+    def download(self, verbose=False):
+        if verbose:
+            print("download '{}'".format(self._get_image_filepath()))
         return self._download_image()
 
     def _polygon(self):

@@ -33,12 +33,14 @@ class MergedLoss(nn.Module):
         super().__init__()
         self._losses = losses
         self._aggr = aggr
-        self._weights = weights if weights is not None else torch.ones([len(losses)])
+        if weights is None:
+            weights = torch.ones([len(losses)], requires_grad=True)
+        self.register_buffer('weights', weights)
 
     def forward(self, logits, y_true):
         if self._aggr == "sum":
             losses = torch.tensor([loss(logits, y_true) for loss in self._losses])
-            return torch.sum(losses * self._weights)
+            return torch.sum(losses * self.weights)
         else:
             raise ValueError("unknown aggregation")
 

@@ -1,5 +1,6 @@
 import os
 from argparse import ArgumentParser
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +28,17 @@ from augment import get_aug_transforms, get_norm_transform
 from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, AnnotationCropWithCue
 from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
 from unet import Unet, DiceWithLogitsLoss, MergedLoss
+
+
+def get_random_init_fn(seed):
+    def random_init():
+        import numpy as np
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed + 42)
+        np.random.seed(seed + 83)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    return random_init
 
 
 def soft_dice_coefficient(y_true, y_pred, epsilon=1e-6):
@@ -104,6 +116,13 @@ def save_cues(path, crops_with_cues):
         io.imsave(os.path.join(path, crop.annotation.originalFilename), crop.cue)
 
 
+def group_annot_per_image(annots):
+    dd = defaultdict(list)
+    for a in annots:
+        dd[a.image].append(a)
+    return dd
+
+
 def main(argv):
     """
 
@@ -147,14 +166,16 @@ def main(argv):
         args, _ = parser.parse_known_args(argv)
         print(args)
 
+        get_random_init_fn(args.rseed)()
+
         os.makedirs(args.save_path, exist_ok=True)
         os.makedirs(args.data_path, exist_ok=True)
         os.makedirs(args.working_path, exist_ok=True)
 
         # fetch annotations (filter val/test sets + other annotations)
         all_annotations = get_thyroid_annotations()
-        pattern_collec = get_pattern_train(all_annotations)[:5]
-        cell_collec = get_cell_train(all_annotations)[:5]
+        pattern_collec = get_pattern_train(all_annotations)
+        cell_collec = get_cell_train(all_annotations)
         train_collec = pattern_collec + cell_collec
         val_rois, val_foreground = get_val_set(all_annotations)
         train_wsi_ids = list({an.image for an in all_annotations}.difference(VAL_TEST_IDS))
@@ -169,27 +190,34 @@ def main(argv):
             "match_fn": lambda a, b: a.intersects(b)
         }
         print("base cell crops... ", end="", flush=True)
+        annots_per_image = group_annot_per_image(train_collec)
         intersecting = {
-            annot.id: generic_match_search(box(*wkt.loads(annot.location).bounds), train_collec, **match_params)
+            annot.id: generic_match_search(
+                key_item=box(*wkt.loads(annot.location).bounds),
+                elements=annots_per_image[annot.image],
+                **match_params)
             for annot in train_collec
         }
         print("done")
         print("validation rois... ", end="", flush=True)
         val_rois_to_intersect = {
-            roi.id: generic_match_search(wkt.loads(roi.location), val_foreground, **match_params)
+            roi.id: generic_match_search(
+                key_item=wkt.loads(roi.location),
+                elements=[a for a in val_foreground if a.image == roi.image],
+                **match_params)
             for roi in val_rois
         }
         print("done")
 
         pattern_crops = [AnnotationCrop(
             images[annot.image], annot, download_path, args.tile_size,
-            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in pattern_collec][:5]
+            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in pattern_collec]
         base_cell_crops = [AnnotationCrop(
             images[annot.image], annot, download_path, args.tile_size,
-            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in cell_collec][:5]
+            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in cell_collec]
         val_crops = [AnnotationCrop(
             images[annot.image], annot, download_path, args.tile_size,
-            zoom_level=args.zoom_level) for annot in val_rois][:5]
+            zoom_level=args.zoom_level) for annot in val_rois]
 
         for crop in pattern_crops + base_cell_crops + val_crops:
             crop.download()
@@ -227,12 +255,18 @@ def main(argv):
             "both_trans": struct,
             "mask_trans": transforms.ToTensor()
         }
-
         full_dataset = RemoteAnnotationCropTrainDataset(pattern_crops, **trans_dict)
         if args.sparse_start_after >= 0:
             sparse_dataset = RemoteAnnotationCropTrainDataset([], **trans_dict)
         else:
             sparse_dataset = RemoteAnnotationCropTrainDataset(base_cell_crops, **trans_dict)
+
+        print("Dataset")
+        print("Size: ")
+        print("- complete   : {}".format(len(pattern_crops)))
+        print("- sparse     : {}".format(len(base_cell_crops)))
+        print("- both (bef) : {}".format(len(full_dataset)))
+        print("- start (improved) sparse after epoch {}".format(args.sparse_start_after))
 
         for e in range(args.epochs):
             print("########################")
@@ -263,6 +297,9 @@ def main(argv):
             val_dice = np.zeros(len(val_rois), dtype=np.float)
             val_cm = np.zeros([len(val_rois), 2, 2], dtype=np.int)
 
+            print("------------------------------")
+            print("Eval at epoch {}:".format(e))
+
             for i, roi in enumerate(val_crops):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
@@ -280,8 +317,7 @@ def main(argv):
                 val_dice[i] = soft_dice_coefficient(y_true, y_pred)
                 val_cm[i] = metrics.confusion_matrix(y_true.flatten().astype(np.uint8), (y_pred.flatten() > 0.5).astype(np.uint8))
 
-            print("------------------------------")
-            print("Epoch {}:".format(e))
+
             val_loss = np.mean(val_losses)
             roc_auc = np.mean(val_roc_auc)
             dice = np.mean(val_dice)
@@ -293,7 +329,7 @@ def main(argv):
             print("CM at 0.5 threshold")
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
-            if args.sparse_start_after >= e:
+            if args.sparse_start_after <= e:
                 print("------------------------------")
                 print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
                 new_crops = list()

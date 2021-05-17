@@ -63,19 +63,6 @@ def multi_fn(tensors, fn=None):
     return (fn(t) for t in tensors)
 
 
-def print_image(tensor):
-    print(tensor.shape)
-    return tensor
-
-"""
-import itertools
-import skimage
-for i, t in enumerate(itertools.permutations([0, 1, 2])):
-    skimage.io.imsave("aug" + str(i) + ".png", tensor[:, :, tuple(t)])
-for i in range(3):
-    skimage.io.imsave("aug-slice" + str(i) +  ".png", tensor[:, :, i])
-"""
-
 def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, seed=42):
     aug_rstate = check_random_state(seed)
     struct_transform = [
@@ -97,7 +84,7 @@ def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_
         partial(random_hed_ratio, bias_range=aug_hed_bias_range, coef_range=aug_hed_coef_range, random_state=aug_rstate),
         transforms.Lambda(lambda img: img.astype(np.float32)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
     ]
 
     return transforms.Compose(struct_transform), transforms.Compose(visual_transform)
@@ -106,5 +93,5 @@ def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_
 def get_norm_transform():
     return transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])

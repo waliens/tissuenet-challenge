@@ -26,19 +26,19 @@ if __name__ == "__main__":
 
     param_set = ParameterSet()
     param_set.add_parameters(batch_size=[8])
-    param_set.add_parameters(epochs=[5])
+    param_set.add_parameters(epochs=[1])
     param_set.add_parameters(overlap=[0])
-    param_set.add_parameters(tile_size=[256])
+    param_set.add_parameters(tile_size=[256, 512])
     param_set.add_parameters(lr=[0.001])
     param_set.add_parameters(init_fmaps=[8])
     param_set.add_parameters(zoom_level=[0])
-    param_set.add_parameters(loss=["bce"])
-    param_set.add_parameters(sparse_start_after=[-1])
-    param_set.add_parameters(aug_hed_bias_range=[0.025])
-    param_set.add_parameters(aug_hed_coef_range=[0.025])
+    param_set.add_parameters(loss=["both"])
+    param_set.add_parameters(sparse_start_after=[-1, 0, 1])
+    param_set.add_parameters(aug_hed_bias_range=[0.0125])
+    param_set.add_parameters(aug_hed_coef_range=[0.0125])
     param_set.add_parameters(aug_blur_sigma_extent=[0.1])
     param_set.add_parameters(aug_noise_var_extent=[0.1])
-    param_set.add_parameters(save_cues=[True])
+    param_set.add_parameters(save_cues=[False])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("thyroid-unet-training-full-debug", param_set, make_build_fn(**env_params))
+    experiment = Experiment("thyroid-unet-training-debug", param_set, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)
