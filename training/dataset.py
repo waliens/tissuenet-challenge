@@ -203,7 +203,10 @@ class AnnotationCrop(BaseAnnotationCrop):
         fg = [translate(g, xoff=-(window_x + crop_x), yoff=-(window_y + crop_y)).intersection(window)
               for g in ground_truth]
         fg = [p for p in fg if not p.is_empty]
-        mask = rasterize(fg, out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
+        if len(fg) > 0:
+            mask = rasterize(fg, out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
+        else:
+            mask = np.zeros([self._tile_size, self._tile_size])
         return mask
 
     @property
