@@ -25,7 +25,8 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
-from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, AnnotationCropWithCue
+from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, AnnotationCropWithCue, \
+    predict_annotation_crops_with_cues
 from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
 from unet import Unet, DiceWithLogitsLoss, MergedLoss
 
@@ -317,7 +318,6 @@ def main(argv):
                 val_dice[i] = soft_dice_coefficient(y_true, y_pred)
                 val_cm[i] = metrics.confusion_matrix(y_true.flatten().astype(np.uint8), (y_pred.flatten() > 0.5).astype(np.uint8))
 
-
             val_loss = np.mean(val_losses)
             roc_auc = np.mean(val_roc_auc)
             dice = np.mean(val_dice)
@@ -332,20 +332,9 @@ def main(argv):
             if args.sparse_start_after <= e:
                 print("------------------------------")
                 print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
-                new_crops = list()
-                for i, crop in enumerate(base_cell_crops):
-                    y_pred, _ = predict_roi(
-                        crop, crop.intersecting + [crop.annotation], unet, device,
-                        in_trans=get_norm_transform(),
-                        batch_size=args.batch_size,
-                        tile_size=args.tile_size,
-                        overlap=args.tile_overlap,
-                        n_jobs=args.n_jobs,
-                        zoom_level=args.zoom_level
-                    )
-                    print("\r{:3.2f}%".format((i + 1) * 100 / len(base_cell_crops)), end="")
-                    new_crops.append(AnnotationCropWithCue(crop=crop, cue=y_pred))
-                print()
+                new_crops = predict_annotation_crops_with_cues(
+                    unet, base_cell_crops, device, in_trans=get_norm_transform(),
+                    overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
                 if args.save_cues:
                     cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
                     print("save cues for epoch {} at '{}'".format(e, cue_save_path))

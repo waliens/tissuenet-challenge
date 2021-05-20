@@ -1,5 +1,6 @@
 import os
 from abc import abstractmethod
+from collections import defaultdict
 
 import PIL
 import cv2
@@ -79,6 +80,10 @@ class AnnotationCrop(BaseAnnotationCrop):
         self._zoom_level = zoom_level
         self._other_annotations = [] if intersecting is None else intersecting
         self._other_polygons = [self._annot2poly(a) for a in self._other_annotations]
+
+    @property
+    def tile_size(self):
+        return self._tile_size
 
     @property
     def wsi(self):
@@ -287,6 +292,14 @@ class TileTopologyDataset(Dataset):
         self._topology = topology
         self._trans = trans
 
+    @property
+    def topology(self):
+        return self._topology
+
+    @property
+    def trans(self):
+        return self._trans
+
     def __getitem__(self, item):
         image = Image.fromarray(self._topology.tile(item + 1).np_image)
         if self._trans is not None:
@@ -363,3 +376,96 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     # cv2.imwrite("{}_true.png".format(roi.annotation.id), y_true * 255)
     # cv2.imwrite("{}_pred_{}.png".format(roi.annotation.id, datetime.now().timestamp()), (y_pred * 255).astype(np.uint8))
     return y_pred, y_true
+
+
+def datasets_size_cumsum(datasets):
+    sizes = np.array([len(d) for d in datasets])
+    cumsum = np.concatenate([np.array([0]), np.cumsum(sizes[:-1], dtype=np.int)])
+    return sizes, cumsum
+
+
+def get_sample_indexes(index, cumsum):
+    dataset_index = np.searchsorted(cumsum, index, side="right") - 1
+    relative_index = index - cumsum[dataset_index]
+    return dataset_index, relative_index
+
+
+class AnnotationCropTopoplogyDataset(Dataset):
+    def __init__(self, crop, overlap=0, in_trans=None):
+        self._dataset = TileTopologyDataset(crop.topology(crop.tile_size, crop.tile_size, overlap=overlap), trans=in_trans)
+        self._crop = crop
+
+    def __getitem__(self, item):
+        _id, tile = self._dataset[item]
+        x_off, y_off = self._dataset.topology.tile_offset(_id)
+        return _id, x_off, y_off, tile
+
+    def __len__(self):
+        return len(self._dataset)
+
+
+class MultiCropsSet(Dataset):
+    def __init__(self, crops, in_trans, overlap=0):
+        """
+        Parameters
+        ----------
+        do_add_group: bool
+            True to append group identifier (optional), default: `False`.
+        kwargs: dict
+            Parameters to be transferred to the actual `ImageFolder`.
+        """
+        super().__init__()
+        self._datasets = [
+            AnnotationCropTopoplogyDataset(crop, overlap=overlap, in_trans=in_trans)
+            for crop in crops]
+        self._sizes, self._cumsum_sizes = datasets_size_cumsum(self._datasets)
+
+    def __getitem__(self, index):
+        dataset_index, relative_index = get_sample_indexes(index, self._cumsum_sizes)
+        dataset = self._datasets[dataset_index]
+        return (dataset._crop.annotation.id,) + dataset[relative_index]
+
+    def __len__(self):
+        return self._cumsum_sizes[-1] + len(self._datasets[-1])
+
+
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+
+def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1):
+    if len(crops) == 0:
+        return 0
+    dataset = MultiCropsSet(crops, in_trans=in_trans, overlap=overlap)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
+                        num_workers=n_jobs, pin_memory=True, drop_last=False)
+
+    tile_size = crops[0].tile_size
+    n_bytes = len(dataset) * tile_size * tile_size * 4
+    print("> annot with cues needs approx {} of memory".format(sizeof_fmt(n_bytes)), flush=True)
+    all_ys = defaultdict(list)
+    net.eval()
+    for annot_ids, tile_ids, xs, ys, tiles in loader:
+        t = tiles.to(device)
+        y = net.forward(t)
+        detached = y.detach().cpu().numpy()
+        for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
+            all_ys[annot_id.item()].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
+
+    awcues = list()
+    for crop in crops:
+        _, w, h = crop.image_box
+        cue = np.zeros([h, w], dtype=np.float)
+        acc = np.zeros([h, w], dtype=np.int)
+        for tile_id, (x_off, y_off), y_pred in all_ys[crop.annotation.id]:
+            cue[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
+            acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
+        cue /= acc
+        awcues.append(AnnotationCropWithCue(crop, cue=cue))
+        del(all_ys[crop.annotation.id])
+
+    return awcues
