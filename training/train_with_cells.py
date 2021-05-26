@@ -2,6 +2,7 @@ import os
 from argparse import ArgumentParser
 from collections import defaultdict
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import joblib
@@ -21,6 +22,7 @@ from sklearn import metrics
 from sldc import batch_split
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, ConcatDataset
 from torchvision.transforms import transforms
 
@@ -157,6 +159,9 @@ def main(argv):
         parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
         parser.add_argument("--aug_blur_sigma_extent", dest="aug_blur_sigma_extent", type=float, default=0.1)
         parser.add_argument("--aug_noise_var_extent", dest="aug_noise_var_extent", type=float, default=0.1)
+        parser.add_argument("--lr_sched_factor", dest="lr_sched_factor", type=float, default=0.5)
+        parser.add_argument("--lr_sched_patience", dest="lr_sched_patience", type=int, default=3)
+        parser.add_argument("--lr_sched_cooldown", dest="lr_sched_cooldown", type=int, default=3)
         parser.add_argument("--data_path", "--dpath", dest="data_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-w", "--working_path", "--wpath", dest="working_path",
@@ -230,6 +235,11 @@ def main(argv):
         unet.to(device)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
+        # stops after five decreases
+        mk_sched = partial(ReduceLROnPlateau, 'min', factor=args.lr_sched_factor, patience=args.lr_sched_patience,
+                           threshold=0.005, threshold_mode="abs", cooldown=args.lr_sched_cooldown,
+                           min_lr=args.lr * (args.lr_sched_factor ** 5), verbose=True)
+        scheduler = mk_sched(optimizer)
 
         loss_fn = {
             "dice": DiceWithLogitsLoss(reduction="mean"),
@@ -342,6 +352,12 @@ def main(argv):
                 sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, **trans_dict)
             print("------------------------------")
 
+            # reset scheduler when adding new samples
+            if args.sparse_start_after == e:
+                scheduler = mk_sched(optimizer)
+            else:
+                scheduler.step(dice)
+
             filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level, args.tile_size)
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
@@ -367,7 +383,8 @@ class TrainComputation(Computation):
 
     def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0,
             sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
-            aug_noise_var_extent=0.1, save_cues=False, loss="bce"):
+            aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
+            lr_sched_cooldown=3):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -390,7 +407,10 @@ class TrainComputation(Computation):
                 "--aug_hed_bias_range", str(aug_hed_bias_range),
                 "--aug_hed_coef_range", str(aug_hed_coef_range),
                 "--aug_blur_sigma_extent", str(aug_blur_sigma_extent),
-                "--aug_noise_var_extent", str(aug_noise_var_extent)]
+                "--aug_noise_var_extent", str(aug_noise_var_extent),
+                "--lr_sched_factor", str(lr_sched_factor),
+                "--lr_sched_patience", str(lr_sched_patience),
+                "--lr_sched_cooldown", str(lr_sched_cooldown)]
         if save_cues:
             argv.append("--save_cues")
         for k, v in main(argv).items():
