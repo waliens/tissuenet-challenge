@@ -79,12 +79,11 @@ def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_
     ]
     visual_transform = [
         ToNumpy(),
+        partial(random_hed_ratio, bias_range=aug_hed_bias_range, coef_range=aug_hed_coef_range, random_state=aug_rstate),
         partial(random_gaussian_noise, var_extent=aug_noise_var_extent, random_state=aug_rstate),
         partial(random_blur, sigma_extent=aug_blur_sigma_extent, random_state=aug_rstate),
-        partial(random_hed_ratio, bias_range=aug_hed_bias_range, coef_range=aug_hed_coef_range, random_state=aug_rstate),
         transforms.Lambda(lambda img: img.astype(np.float32)),
-        transforms.ToTensor(),
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
+        transforms.ToTensor()
     ]
 
     return transforms.Compose(struct_transform), transforms.Compose(visual_transform)
@@ -92,6 +91,5 @@ def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_
 
 def get_norm_transform():
     return transforms.Compose([
-        transforms.ToTensor(),
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.ToTensor()
     ])

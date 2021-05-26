@@ -245,10 +245,10 @@ def main(argv):
         }
 
         struct, visual = get_aug_transforms(
-            aug_noise_var_extent=args.aug_hed_bias_range,
-            aug_blur_sigma_extent=args.aug_hed_coef_range,
-            aug_hed_bias_range=args.aug_blur_sigma_extent,
-            aug_hed_coef_range=args.aug_noise_var_extent,
+            aug_hed_bias_range=args.aug_hed_bias_range,
+            aug_hed_coef_range=args.aug_hed_coef_range,
+            aug_blur_sigma_extent=args.aug_blur_sigma_extent,
+            aug_noise_var_extent=args.aug_noise_var_extent,
             seed=args.rseed)
 
         trans_dict = {
@@ -346,7 +346,7 @@ def main(argv):
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
             results["val_losses"].append(val_loss)
-            results["val_dice"].append(val_dice)
+            results["val_dice"].append(dice)
             results["val_metrics"].append(roc_auc)
             results["save_path"].append(filename)
 
@@ -386,7 +386,7 @@ class TrainComputation(Computation):
                 "--save_path", str(self._save_path),
                 "--loss", str(loss),
                 "--zoom_level", str(zoom_level),
-                "--sparse_start_after", str(0),
+                "--sparse_start_after", str(sparse_start_after),
                 "--aug_hed_bias_range", str(aug_hed_bias_range),
                 "--aug_hed_coef_range", str(aug_hed_coef_range),
                 "--aug_blur_sigma_extent", str(aug_blur_sigma_extent),
