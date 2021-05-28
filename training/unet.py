@@ -1,10 +1,6 @@
-import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from torchvision import transforms
-import math
 
 
 class DiceWithLogitsLoss(nn.Module):
@@ -19,7 +15,7 @@ class DiceWithLogitsLoss(nn.Module):
         intersection = torch.sum(y_true * y_pred, dim=hw_dim)
         sum_true = torch.sum(torch.square(y_true), dim=hw_dim)
         sum_pred = torch.sum(torch.square(y_pred), dim=hw_dim)
-        batch_dice = (2 * intersection + self._smooth) / (sum_true + sum_pred + self._smooth)
+        batch_dice = 1 - (2 * intersection + self._smooth) / (sum_true + sum_pred + self._smooth)
         if self._reduction is None:
             return batch_dice
         elif self._reduction == "mean":
@@ -31,7 +27,7 @@ class DiceWithLogitsLoss(nn.Module):
 class MergedLoss(nn.Module):
     def __init__(self, *losses, aggr="sum", weights=None):
         super().__init__()
-        self._losses = losses
+        self.losses = losses
         self._aggr = aggr
         if weights is None:
             weights = torch.ones([len(losses)], requires_grad=True)
@@ -39,10 +35,15 @@ class MergedLoss(nn.Module):
 
     def forward(self, logits, y_true):
         if self._aggr == "sum":
-            losses = torch.tensor([loss(logits, y_true) for loss in self._losses])
-            return torch.sum(losses * self.weights)
+            return self._accum(logits, y_true, lambda a, b: a + b)
         else:
             raise ValueError("unknown aggregation")
+
+    def _accum(self, logits, y_true, fn):
+        total_loss = self.weights[0] * self.losses[0](logits, y_true)
+        for i, loss in enumerate(self.losses[1:]):
+            total_loss = fn(total_loss, self.weights[i + 1] * loss(logits, y_true))
+        return total_loss
 
 
 class Unet(nn.Module):
