@@ -236,7 +236,7 @@ def main(argv):
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
-        mk_sched = partial(ReduceLROnPlateau, 'min', factor=args.lr_sched_factor, patience=args.lr_sched_patience,
+        mk_sched = partial(ReduceLROnPlateau, mode='min', factor=args.lr_sched_factor, patience=args.lr_sched_patience,
                            threshold=0.005, threshold_mode="abs", cooldown=args.lr_sched_cooldown,
                            min_lr=args.lr * (args.lr_sched_factor ** 5), verbose=True)
         scheduler = mk_sched(optimizer)
