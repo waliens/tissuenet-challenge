@@ -125,6 +125,36 @@ def group_annot_per_image(annots):
         dd[a.image].append(a)
     return dd
 
+class GraduallyAddMoreDataState(object):
+    def __init__(self, sparse, non_sparse, data_rate=1.0, data_max=1.0):
+        self._data_rate = data_rate
+        self._data_max = data_max
+        self._sparse = sparse
+        self._non_sparse = non_sparse
+        self._current_amount = 0
+
+    @property
+    def abs_data_max(self):
+        if self._data_max < 0:
+            return min(len(self._non_sparse), len(self._sparse))
+        elif 0 <= self._data_max <= 1:
+            return int(self._data_max * len(self._sparse))
+        else:
+            return min(int(self._data_max), len(self._sparse))
+
+    @property
+    def abs_date_to_add(self):
+        if 0 <= self._data_rate <= 1:
+            return int(self._data_rate * len(self._sparse))
+        elif self._data_rate > 1:
+            return int(self._data_max)
+
+    def get_next(self):
+        self._current_amount += self.abs_date_to_add
+        self._current_amount = min(self._current_amount, self.abs_data_max)
+        return self._sparse[:self._current_amount]
+
+
 
 def main(argv):
     """
@@ -162,6 +192,8 @@ def main(argv):
         parser.add_argument("--lr_sched_factor", dest="lr_sched_factor", type=float, default=0.5)
         parser.add_argument("--lr_sched_patience", dest="lr_sched_patience", type=int, default=3)
         parser.add_argument("--lr_sched_cooldown", dest="lr_sched_cooldown", type=int, default=3)
+        parser.add_argument("--sparse_data_rate", dest="sparse_data_rate", type=float, default=1.0, help="<=1.0 = proportion; >1 = number of samples")
+        parser.add_argument("--sparse_data_max", dest="sparse_data_max", type=float, default=1.0, help="-1 = same as non sparse; <=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--data_path", "--dpath", dest="data_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-w", "--working_path", "--wpath", dest="working_path",
@@ -266,11 +298,18 @@ def main(argv):
             "both_trans": struct,
             "mask_trans": transforms.ToTensor()
         }
+
+        # gradual more data
+        add_data_state = GraduallyAddMoreDataState(
+            base_cell_crops, pattern_crops,
+            data_rate=args.sparse_data_rate,
+            data_max=args.sparse_data_max)
+
         full_dataset = RemoteAnnotationCropTrainDataset(pattern_crops, **trans_dict)
         if args.sparse_start_after >= 0:
             sparse_dataset = RemoteAnnotationCropTrainDataset([], **trans_dict)
         else:
-            sparse_dataset = RemoteAnnotationCropTrainDataset(base_cell_crops, **trans_dict)
+            sparse_dataset = RemoteAnnotationCropTrainDataset(add_data_state.get_next(), **trans_dict)
 
         print("Dataset")
         print("Size: ")
@@ -343,7 +382,7 @@ def main(argv):
                 print("------------------------------")
                 print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
                 new_crops = predict_annotation_crops_with_cues(
-                    unet, base_cell_crops, device, in_trans=get_norm_transform(),
+                    unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
                     overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
                 if args.save_cues:
                     cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
@@ -384,7 +423,7 @@ class TrainComputation(Computation):
     def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0,
             sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
-            lr_sched_cooldown=3):
+            lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -410,7 +449,9 @@ class TrainComputation(Computation):
                 "--aug_noise_var_extent", str(aug_noise_var_extent),
                 "--lr_sched_factor", str(lr_sched_factor),
                 "--lr_sched_patience", str(lr_sched_patience),
-                "--lr_sched_cooldown", str(lr_sched_cooldown)]
+                "--lr_sched_cooldown", str(lr_sched_cooldown),
+                "--sparse_data_rate", str(sparse_data_rate),
+                "--sparse_data_max", str(sparse_data_max)]
         if save_cues:
             argv.append("--save_cues")
         for k, v in main(argv).items():
