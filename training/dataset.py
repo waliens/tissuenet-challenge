@@ -7,6 +7,7 @@ import cv2
 import math
 import numpy as np
 import sldc
+import torch
 from PIL import Image
 from cytomine.models import Annotation
 from rasterio.features import rasterize
@@ -262,6 +263,14 @@ class AnnotationCropWithCue(BaseAnnotationCrop):
         final_mask[np.asarray(mask) > 0] = 255
         return crop, Image.fromarray(final_mask)
 
+    @property
+    def cue(self):
+        return self._cue
+
+    @property
+    def crop(self):
+        return self._crop
+
 
 class RemoteAnnotationCropTrainDataset(Dataset):
     def __init__(self, crops, image_trans=None, both_trans=None, mask_trans=None):
@@ -451,7 +460,7 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
     net.eval()
     for annot_ids, tile_ids, xs, ys, tiles in loader:
         t = tiles.to(device)
-        y = net.forward(t)
+        y = torch.sigmoid(net.forward(t))
         detached = y.detach().cpu().numpy()
         for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
             all_ys[annot_id.item()].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))

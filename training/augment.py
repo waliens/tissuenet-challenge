@@ -63,6 +63,26 @@ def multi_fn(tensors, fn=None):
     return (fn(t) for t in tensors)
 
 
+# DEBUGGING FUNCTIONS
+# def print_np(nparray, key=""):
+#     import skimage
+#     import os
+#     print(key, nparray.shape, np.max(nparray), np.min(nparray))
+#     skimage.io.imsave(os.path.join("/home/rmormont/tmp_aug/", "image_{}_{}.png".format(key, np.random.randint(1000000))), nparray)
+#     return nparray
+#
+# def print_tensor(t, key=""):
+#     import skimage
+#     import os
+#     skimage.io.imsave(os.path.join("/home/rmormont/tmp_aug/", "image_{}_{}.png".format(key, np.random.randint(1000000))), (np.moveaxis(t.numpy(), 0, 2) * 255).astype(np.uint8))
+#     return t
+#
+# def print_pil(p:Image.Image, key=""):
+#     import os
+#     print(key, (p.height, p.width), p.getbands(), p.getextrema()[0], p.getextrema()[0])
+#     p.save(os.path.join("/home/rmormont/tmp_aug/", "image_{}_{}.png".format(key, np.random.randint(1000000))))
+#     return p
+
 def get_aug_transforms(aug_noise_var_extent=0.1, aug_blur_sigma_extent=0.1, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, seed=42):
     aug_rstate = check_random_state(seed)
     struct_transform = [

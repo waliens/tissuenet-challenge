@@ -144,3 +144,30 @@ class UpConvBlock(nn.Module):
         return F.relu(self.conv2(F.relu(self.conv1(x))))
 
 
+# if __name__ == "__main__":
+#     torch.default_generator.manual_seed(42)
+#     y_true = torch.tensor([[[0., 0., 1.], [0., 0., 1.], [0., 0., 1.]], [[1., 1., 0.], [1., 1., 0.], [1., 1., 0.]]])
+#     x = torch.rand(2, 3, 3)
+#
+#     class Custom(torch.nn.Module):
+#         def __init__(self):
+#             super().__init__()
+#             self.p = torch.nn.Parameter(torch.tensor([1.0]), requires_grad=True)
+#             self.b = torch.nn.Parameter(torch.tensor([0.1]), requires_grad=True)
+#
+#         def forward(self, x):
+#             return x * self.p + self.b
+#
+#
+#     def call(loss_fn, x, y):
+#         linear = Custom()
+#         y_pred = linear(x)
+#         loss = loss_fn(y_pred, y)
+#         loss.backward()
+#         print(loss.detach().item())
+#         print(linear.p.grad)
+#         print(linear.b.grad)
+#         linear.zero_grad()
+#
+#     call(DiceWithLogitsLoss(reduction="mean"), x, y_true)
+#     call(MergedLoss(*[DiceWithLogitsLoss(reduction="mean"), BCEWithLogitsLoss(reduction="mean")]), x, y_true)
