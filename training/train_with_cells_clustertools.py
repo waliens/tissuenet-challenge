@@ -32,12 +32,12 @@ if __name__ == "__main__":
     param_set.add_parameters(batch_size=[8])
     param_set.add_parameters(epochs=[50])
     param_set.add_parameters(overlap=[0])
-    param_set.add_parameters(tile_size=[256, 512])
+    param_set.add_parameters(tile_size=[512])
     param_set.add_parameters(lr=[0.001])
     param_set.add_parameters(init_fmaps=[8])
     param_set.add_parameters(zoom_level=[0])
-    param_set.add_parameters(loss=["bce", "both", "dice"])
-    param_set.add_parameters(sparse_start_after=[-1, 0, 10, 20, 30, 50])
+    param_set.add_parameters(loss=["bce"])
+    param_set.add_parameters(sparse_start_after=[-1, 0, 10, 25, 50])
     param_set.add_parameters(aug_hed_bias_range=[0.025])
     param_set.add_parameters(aug_hed_coef_range=[0.025])
     param_set.add_parameters(aug_blur_sigma_extent=[0.1])
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     param_set.add_parameters(lr_sched_patience=[5])
     param_set.add_parameters(lr_sched_cooldown=[10])
     param_set.add_parameters(save_cues=[False])
-    param_set.add_parameters(sparse_data_rate=[0.05, 0.1, 0.5, 1.0])
+    param_set.add_parameters(sparse_data_rate=[0.1, 0.5, 1.0])
     param_set.add_parameters(sparse_data_max=[1.0, -1])
 
     constrained = ConstrainedParameterSet(param_set)
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("thyroid-unet-training-gradual", constrained, make_build_fn(**env_params))
+    experiment = Experiment("thyroid-unet-training-gradual-2", constrained, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)
