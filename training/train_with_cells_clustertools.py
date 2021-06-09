@@ -49,6 +49,9 @@ if __name__ == "__main__":
     param_set.add_parameters(sparse_data_rate=[0.1, 0.5, 1.0])
     param_set.add_parameters(sparse_data_max=[1.0, -1])
 
+    param_set.add_separator()
+    param_set.add_parameters(tile_size=[256])
+
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(exclude_no_new_data=exclude_no_new_data)
 
