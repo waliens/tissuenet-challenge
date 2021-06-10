@@ -116,7 +116,7 @@ def polyref_proc2cyto(p, height_at_zoom_level, zoom_level=0):
 def save_cues(path, crops_with_cues):
     os.makedirs(path, exist_ok=True)
     for crop in crops_with_cues:
-        io.imsave(os.path.join(path, crop.annotation.originalFilename), crop.cue)
+        io.imsave(os.path.join(path, crop.crop.annotation.originalFilename), crop.cue)
 
 
 def group_annot_per_image(annots):
@@ -196,13 +196,21 @@ def main(argv):
         parser.add_argument("--sparse_data_max", dest="sparse_data_max", type=float, default=1.0, help="-1 = same as non sparse; <=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--data_path", "--dpath", dest="data_path",
                             default=os.path.join(str(Path.home()), "tmp"))
+        parser.add_argument("--no_distillation", "no_distillation", action="store_true")
+        parser.add_argument("--no_groundtruth", "no_groundtruth", action="store_true")
         parser.add_argument("-w", "--working_path", "--wpath", dest="working_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
-        parser.set_defaults(save_cues=False)
+        parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
         print(args)
+
+        if args.no_groundtruth and args.sparse_start_after == -1:
+            raise ValueError("no ground truth experiment should start adding sparse data after first epoch")
+
+        if args.no_groundtruth and args.no_distillation:
+            raise ValueError("cannot exclude ground truth and distillation at the same time")
 
         get_random_init_fn(args.rseed)()
 
@@ -324,6 +332,7 @@ def main(argv):
             print("########################")
 
             concat_dataset = ConcatDataset([sparse_dataset, full_dataset])
+            print("Training dataset size: {}".format(len(concat_dataset)))
             loader = DataLoader(concat_dataset, shuffle=True, batch_size=args.batch_size,
                                 num_workers=args.n_jobs, worker_init_fn=worker_init)
 
@@ -379,17 +388,23 @@ def main(argv):
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
             if args.sparse_start_after <= e:
-                print("------------------------------")
-                print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
-                new_crops = predict_annotation_crops_with_cues(
-                    unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
-                    overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
-                if args.save_cues:
-                    cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
-                    print("save cues for epoch {} at '{}'".format(e, cue_save_path))
-                    save_cues(cue_save_path, new_crops)
-                sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, **trans_dict)
-            print("------------------------------")
+                if args.no_distillation:
+                    sparse_dataset = RemoteAnnotationCropTrainDataset(add_data_state.get_next(), **trans_dict)
+                else:
+                    print("------------------------------")
+                    print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
+                    new_crops = predict_annotation_crops_with_cues(
+                        unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
+                        overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
+                    if args.save_cues:
+                        cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
+                        print("save cues for epoch {} at '{}'".format(e, cue_save_path))
+                        save_cues(cue_save_path, new_crops)
+                    if args.no_groundtruth:
+                        for awcue in new_crops:
+                            awcue.cue_only = True
+                    sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, **trans_dict)
+                    print("------------------------------")
 
             # reset scheduler when adding new samples
             if args.sparse_start_after == e:
@@ -423,7 +438,8 @@ class TrainComputation(Computation):
     def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0,
             sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
-            lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0):
+            lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
+            no_groundtruth=False):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -454,6 +470,10 @@ class TrainComputation(Computation):
                 "--sparse_data_max", str(sparse_data_max)]
         if save_cues:
             argv.append("--save_cues")
+        if no_distillation:
+            argv.append("--no_distillation")
+        if no_groundtruth:
+            argv.append("--no_groundtruth")
         for k, v in main(argv).items():
             results[k] = v
 

@@ -210,9 +210,9 @@ class AnnotationCrop(BaseAnnotationCrop):
               for g in ground_truth]
         fg = [p for p in fg if not p.is_empty]
         if len(fg) > 0:
-            mask = rasterize(fg, out_shape=(self._tile_size, self._tile_size), fill=0, dtype=np.uint8) * 255
+            mask = rasterize(fg, out_shape=(window_height, window_width), fill=0, dtype=np.uint8) * 255
         else:
-            mask = np.zeros([self._tile_size, self._tile_size])
+            mask = np.zeros([window_height, window_width])
         return mask
 
     @property
@@ -239,7 +239,7 @@ class AnnotationCrop(BaseAnnotationCrop):
 
 
 class AnnotationCropWithCue(BaseAnnotationCrop):
-    def __init__(self, crop: BaseAnnotationCrop, cue):
+    def __init__(self, crop: BaseAnnotationCrop, cue, cue_only):
         """
         Parameters
         ----------
@@ -249,12 +249,22 @@ class AnnotationCropWithCue(BaseAnnotationCrop):
         """
         self._crop = crop
         self._cue = (cue * 255)
+        self._cue_only = cue_only
+
+    @property
+    def cue_only(self):
+        return self._cue_only
+
+    @cue_only.setter
+    def cue_only(self, value):
+        self._cue_only = value
 
     def random_crop_and_mask(self):
         crop_location, crop, mask = self._crop.random_crop_and_mask()
         x, y, w, h = crop_location
         final_mask = self._cue[y:(y+h), x:(x+w)]
-        final_mask[np.asarray(mask) > 0] = 255
+        if not self.cue_only:
+            final_mask[np.asarray(mask) > 0] = 255
         return crop_location, crop, Image.fromarray(final_mask.astype(np.uint8), "L")
 
     def crop_and_mask(self):
