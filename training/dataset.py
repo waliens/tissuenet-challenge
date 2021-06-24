@@ -239,7 +239,7 @@ class AnnotationCrop(BaseAnnotationCrop):
 
 
 class AnnotationCropWithCue(BaseAnnotationCrop):
-    def __init__(self, crop: BaseAnnotationCrop, cue, cue_only):
+    def __init__(self, crop: BaseAnnotationCrop, cue, cue_only=False):
         """
         Parameters
         ----------
