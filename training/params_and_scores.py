@@ -34,19 +34,19 @@ def get_color(i):
 
 
 def main(argv):
-    cube = build_datacube("thyroid-unet-training-gradual-2")
+    cube = build_datacube("thyroid-unet-training-study")
     start_idx = {v: i for i, v in enumerate(cube.domain["sparse_start_after"])}
 
     scores = list()
     params = list()
-    for (tile_size, loss, sdm, sdr), ext_cube in cube.iter_dimensions("tile_size", "loss", "sparse_data_max", "sparse_data_rate"):
+    for (tile_size, loss, sdm, sdr, nogt, nodst), ext_cube in cube.iter_dimensions("tile_size", "loss", "sparse_data_max", "sparse_data_rate", "no_distillation", "no_groundtruth"):
         plt.figure()
         markers_x, markers_y = list(), list()
         for (ssa, ), in_cube in ext_cube.iter_dimensions("sparse_start_after"):
             if in_cube("val_losses") is None:
                 continue
             dice = in_cube("val_dice")
-            #print(tile_size, loss, ssa, np.min(in_cube("val_losses")), in_cube("val_losses")[-1], np.max(dice), np.argmax(dice), dice[-1])
+            print(tile_size, loss, ssa, nogt, nodst, np.min(in_cube("val_losses")), in_cube("val_losses")[-1], np.max(dice), np.argmax(dice), dice[-1])
             start_after = int(ssa)
             dice = np.array(dice)
             n_epochs = dice.shape[0]
@@ -56,12 +56,12 @@ def main(argv):
                 markers_y.append(dice[start_after + 1])
 
             scores.append(np.max(dice))
-            params.append("loss={}, tsize={}, sdm={}, ssa={}, sdr={}".format(loss, tile_size, sdm, ssa, sdr))
+            params.append("loss={}, tsize={}, sdm={}, ssa={}, sdr={}, nogt={}, nodst={}".format(loss, tile_size, sdm, ssa, sdr, nogt, nodst))
 
         plt.legend()
-        plt.title("size:{} loss:{} sdm:{} sdr:{}".format(tile_size, loss, sdm, sdr))
+        plt.title("size:{} loss:{} sdm:{} sdr:{} nogt:{} nodst:{}".format(tile_size, loss, sdm, sdr, nogt, nodst))
         plt.scatter(markers_x, markers_y, marker="x", c="red")
-        plt.savefig("1_graph_{}_{}_{}_{}.png".format(tile_size, loss, sdm, sdr))
+        plt.savefig("1_graph_{}_{}_{}_{}_{}_{}.png".format(tile_size, loss, sdm, sdr, nogt, nodst))
 
     sdata = sorted(enumerate(params), key=lambda v: scores[v[0]])
     for i, data in sdata:
