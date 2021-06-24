@@ -196,8 +196,8 @@ def main(argv):
         parser.add_argument("--sparse_data_max", dest="sparse_data_max", type=float, default=1.0, help="-1 = same as non sparse; <=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--data_path", "--dpath", dest="data_path",
                             default=os.path.join(str(Path.home()), "tmp"))
-        parser.add_argument("--no_distillation", "no_distillation", action="store_true")
-        parser.add_argument("--no_groundtruth", "no_groundtruth", action="store_true")
+        parser.add_argument("--no_distillation", dest="no_distillation", action="store_true")
+        parser.add_argument("--no_groundtruth", dest="no_groundtruth", action="store_true")
         parser.add_argument("-w", "--working_path", "--wpath", dest="working_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
