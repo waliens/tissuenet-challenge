@@ -21,7 +21,7 @@ def exclude_no_new_data(**kwargs):
 
 
 def at_least_one_source_of_annot(**kwargs):
-    return kwargs.get("no_distillation") or kwargs.get("no_groundtruth")
+    return not (kwargs.get("no_distillation") and kwargs.get("no_groundtruth"))
 
 
 def exclude_no_groundtruth_no_pretraining_data(**kwargs):
