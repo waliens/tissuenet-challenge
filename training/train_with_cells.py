@@ -31,6 +31,7 @@ from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCro
     predict_annotation_crops_with_cues
 from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
 from unet import Unet, DiceWithLogitsLoss, MergedLoss
+from weight_generator import WeightComputer
 
 
 def get_random_init_fn(seed):
@@ -192,6 +193,10 @@ def main(argv):
         parser.add_argument("--lr_sched_factor", dest="lr_sched_factor", type=float, default=0.5)
         parser.add_argument("--lr_sched_patience", dest="lr_sched_patience", type=int, default=3)
         parser.add_argument("--lr_sched_cooldown", dest="lr_sched_cooldown", type=int, default=3)
+        parser.add_argument("-wm", "--weights_mode", dest="weights_mode", default="constant")
+        parser.add_argument("-wc", "--weights_constant", dest="weights_constant", type=float, default=1.0)
+        parser.add_argument("-wf", "--weights_consistency_fn", dest="weights_consistency_fn", default="absolute")
+        parser.add_argument("-wn", "--weights_neighbourhood", dest="weights_neighbourhood", type=int, default=1)
         parser.add_argument("--sparse_data_rate", dest="sparse_data_rate", type=float, default=1.0, help="<=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--sparse_data_max", dest="sparse_data_max", type=float, default=1.0, help="-1 = same as non sparse; <=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--data_path", "--dpath", dest="data_path",
@@ -273,6 +278,10 @@ def main(argv):
         unet = Unet(args.init_fmaps, n_classes=1)
         unet.train()
         unet.to(device)
+
+        weight_computer = WeightComputer(mode=args.weights_mode, constant_weight=args.weights_constant,
+                                         consistency_fn=args.weights_consistency_fn,
+                                         consistency_neigh=args.weights_neighbourhood)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
@@ -439,7 +448,8 @@ class TrainComputation(Computation):
             sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
-            no_groundtruth=False):
+            no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
+            weights_neighbourhood=1, rseed=42):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -448,6 +458,7 @@ class TrainComputation(Computation):
                 "--batch_size", str(batch_size),
                 "--n_jobs", str(self._n_jobs),
                 "--epochs", str(epochs),
+                "--rseed", str(rseed),
                 "--device", str(self._device),
                 "--tile_overlap", str(overlap),
                 "--tile_size", str(tile_size),
@@ -467,7 +478,11 @@ class TrainComputation(Computation):
                 "--lr_sched_patience", str(lr_sched_patience),
                 "--lr_sched_cooldown", str(lr_sched_cooldown),
                 "--sparse_data_rate", str(sparse_data_rate),
-                "--sparse_data_max", str(sparse_data_max)]
+                "--sparse_data_max", str(sparse_data_max),
+                "--weights_mode", str(weights_mode),
+                "--weights_constant", str(weights_constant),
+                "--weights_consistency_fn", str(weights_consistency_fn),
+                "--weights_neighbourhood", str(weights_neighbourhood)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:

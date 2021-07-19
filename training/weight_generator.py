@@ -15,23 +15,28 @@ class WeightComputer(nn.Module):
         self._constant_weight = constant_weight
         self._consistency_fn = consistency_fn
         self._consistency_neigh = consistency_neigh
-        if consistency_neigh != 1 or consistency_neigh != 2:
+        if consistency_neigh != 1 and consistency_neigh != 2:
             raise ValueError("invalid consistency neighbourhood {}".format(consistency_neigh))
         if ("consistency" in self._mode or "multi" in self._mode) and consistency_fn is None:
             raise ValueError("missing consistency function for weight computation")
 
-    def forward(self, y=None, y_gt=None):
+    def forward(self, y, y_gt):
+        return torch.maximum(self._weight(y, y_gt), y_gt)
+
+    def _weight(self, y, y_gt):
         if self._mode == "constant":
-            return torch.full(y.size(), self._constant_weight, requires_grad=True)
+            return torch.full(y.size(), self._constant_weight, requires_grad=True, device=self._device)
         elif self._mode == "balance_gt":
-            ratio = torch.sum(y_gt, dim=[1, 2], keepdim=True)
-            return y_gt * ratio + (1 - y_gt) * (1 - ratio)
+            ratio = torch.mean(y_gt, dim=[1, 2], keepdim=True)
+            return (1 - y_gt) * ratio / (1 - ratio)
         elif self._mode == "pred_entropy":
             return self._entropy(y)
         elif self._mode == "pred_consistency":
             return self._consistency(y)
         elif self._mode == "pred_merged":
             return self._consistency(y) * self._entropy(y)
+        else:
+            raise ValueError("Invalid mode '{}'".format(self._mode))
 
     def _entropy(self, y):
         return 1 + y * torch.log(y) + (1 - y) * torch.log(1 - y)
@@ -44,23 +49,24 @@ class WeightComputer(nn.Module):
             return lambda y1, y2: torch.abs(y1 - y2)
 
     def _consistency(self, y):
-        offset_range = list(range(-self._consistency_neigh, self._consistency_neigh))
-        divider = torch.zeros(y.size(), dtype=torch.int8)
-        accumulate = torch.zeros(y.size(), dtype=y.dtype)
+        offset_range = list(range(-self._consistency_neigh, self._consistency_neigh+1))
+        divider = torch.zeros(y.size(), dtype=torch.int8, device=self._device)
+        accumulate = torch.zeros(y.size(), dtype=y.dtype, device=self._device)
         _, height, width = y.size()
-        const_fn = self.consist_fn
+        consist_fn = self.consist_fn
         for offset_x in offset_range:
             for offset_y in offset_range:
+                if offset_x == 0 and offset_y == 0:
+                    continue
                 ref_y_low, ref_y_high = max(0, offset_y), min(height, height + offset_y)
                 ref_x_low, ref_x_high = max(0, offset_x), min(width, width + offset_x)
                 tar_y_low, tar_y_high = max(0, -offset_y), min(height, height - offset_y)
                 tar_x_low, tar_x_high = max(0, -offset_x), min(width, width - offset_x)
 
-                accumulate[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high] = const_fn(
+                accumulate[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high] += consist_fn(
                     y[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high],
                     y[:, tar_y_low:tar_y_high, tar_x_low:tar_x_high])
 
                 divider[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high] += 1
 
-        return accumulate / divider
-
+        return 1 - (accumulate / divider)
