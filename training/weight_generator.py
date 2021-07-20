@@ -3,18 +3,20 @@ from torch import nn
 
 
 class WeightComputer(nn.Module):
-    def __init__(self, mode="constant", constant_weight=1.0, consistency_fn=None, consistency_neigh=1):
+    def __init__(self, mode="constant", constant_weight=1.0, consistency_fn=None, consistency_neigh=1, logits=False):
         """
         :param mode: in {'constant', 'balance_gt', 'pred_entropy', 'pred_consistency', 'pred_merged}
         :param constant_weight:
         :param consistency_fn:
         :param consistency_neigh: in pixels
+        :param logits: work with logits
         """
         super().__init__()
         self._mode = mode
         self._constant_weight = constant_weight
         self._consistency_fn = consistency_fn
         self._consistency_neigh = consistency_neigh
+        self._is_logits = logits
         if consistency_neigh != 1 and consistency_neigh != 2:
             raise ValueError("invalid consistency neighbourhood {}".format(consistency_neigh))
         if ("consistency" in self._mode or "multi" in self._mode) and consistency_fn is None:
@@ -23,9 +25,15 @@ class WeightComputer(nn.Module):
     def forward(self, y, y_gt):
         return torch.maximum(self._weight(y, y_gt), y_gt)
 
+    def _y(self, y):
+        if self._is_logits:
+            return torch.sigmoid(y)
+        else:
+            return y
+
     def _weight(self, y, y_gt):
         if self._mode == "constant":
-            return torch.full(y.size(), self._constant_weight, requires_grad=True, device=self._device)
+            return torch.full(y.size(), self._constant_weight, device=self._device)
         elif self._mode == "balance_gt":
             ratio = torch.mean(y_gt, dim=[1, 2], keepdim=True)
             return (1 - y_gt) * ratio / (1 - ratio)
@@ -39,7 +47,12 @@ class WeightComputer(nn.Module):
             raise ValueError("Invalid mode '{}'".format(self._mode))
 
     def _entropy(self, y):
-        return 1 + y * torch.log(y) + (1 - y) * torch.log(1 - y)
+        if not self._is_logits:
+            return 1 + y * torch.log2(y) + (1 - y) * torch.log2(1 - y)
+        else:
+            probas = torch.sigmoid(y)
+            logexpy = torch.log(torch.exp(y) + 1)
+            return 1 + (probas * (y - logexpy) - (1 - probas) * logexpy) / torch.log(torch.tensor(2))
 
     @property
     def consist_fn(self):
@@ -54,6 +67,7 @@ class WeightComputer(nn.Module):
         accumulate = torch.zeros(y.size(), dtype=y.dtype, device=self._device)
         _, height, width = y.size()
         consist_fn = self.consist_fn
+        probas = self._y(y)
         for offset_x in offset_range:
             for offset_y in offset_range:
                 if offset_x == 0 and offset_y == 0:
@@ -64,8 +78,8 @@ class WeightComputer(nn.Module):
                 tar_x_low, tar_x_high = max(0, -offset_x), min(width, width - offset_x)
 
                 accumulate[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high] += consist_fn(
-                    y[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high],
-                    y[:, tar_y_low:tar_y_high, tar_x_low:tar_x_high])
+                    probas[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high],
+                    probas[:, tar_y_low:tar_y_high, tar_x_low:tar_x_high])
 
                 divider[:, ref_y_low:ref_y_high, ref_x_low:ref_x_high] += 1
 

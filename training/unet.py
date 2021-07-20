@@ -1,7 +1,24 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import BCEWithLogitsLoss
 
+
+class BCEWithWeights(BCEWithLogitsLoss):
+    def __init__(self, reduction="none", **kwargs):
+        super().__init__(reduction="none", **kwargs)
+        self._w_reduction = reduction
+
+    def forward(self, input, target, weights=None):
+        to_aggr = super().forward(input, target)
+        if weights is not None:
+            to_aggr *= weights
+        if self._w_reduction == "mean":
+            return torch.mean(to_aggr)
+        elif self._w_reduction == "sum":
+            return torch.sum(to_aggr)
+        else:
+            return to_aggr
 
 class DiceWithLogitsLoss(nn.Module):
     def __init__(self, reduction="mean", smooth=1.):

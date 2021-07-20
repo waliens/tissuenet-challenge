@@ -27,10 +27,9 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
-from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, AnnotationCropWithCue, \
-    predict_annotation_crops_with_cues
+from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, predict_annotation_crops_with_cues
 from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
-from unet import Unet, DiceWithLogitsLoss, MergedLoss
+from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
 from weight_generator import WeightComputer
 
 
@@ -243,10 +242,11 @@ def main(argv):
         print("base cell crops... ", end="", flush=True)
         annots_per_image = group_annot_per_image(train_collec)
         intersecting = {
-            annot.id: generic_match_search(
-                key_item=box(*wkt.loads(annot.location).bounds),
-                elements=annots_per_image[annot.image],
-                **match_params)
+            annot.id: []
+                # generic_match_search(
+                # key_item=box(*wkt.loads(annot.location).bounds),
+                # elements=annots_per_image[annot.image],
+                # **match_params)
             for annot in train_collec
         }
         print("done")
@@ -279,9 +279,11 @@ def main(argv):
         unet.train()
         unet.to(device)
 
+        weights_on = args.loss == "bce" and (args.weights_mode != "constant" or args.weights_constant < 0.99)
         weight_computer = WeightComputer(mode=args.weights_mode, constant_weight=args.weights_constant,
                                          consistency_fn=args.weights_consistency_fn,
-                                         consistency_neigh=args.weights_neighbourhood)
+                                         consistency_neigh=args.weights_neighbourhood,
+                                         logits=True)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
@@ -293,7 +295,7 @@ def main(argv):
         loss_fn = {
             "dice": DiceWithLogitsLoss(reduction="mean"),
             "both": MergedLoss(BCEWithLogitsLoss(reduction="mean"), DiceWithLogitsLoss(reduction="mean"))
-        }.get(args.loss, BCEWithLogitsLoss(reduction="mean"))
+        }.get(args.loss, BCEWithWeights(reduction="mean"))
 
         results = {
             "train_losses": [],
@@ -350,7 +352,12 @@ def main(argv):
             for i, (x, y) in enumerate(loader):
                 x, y = (t.to(device) for t in [x, y])
                 y_pred = unet.forward(x)
-                loss = loss_fn(y_pred, y)
+                if weights_on:
+                    with torch.no_grad():
+                        weights = weight_computer(y_pred.detach(), y.detach())
+                    loss = loss_fn(y_pred, y, weights=weights)
+                else:
+                    loss = loss_fn(y_pred, y)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
