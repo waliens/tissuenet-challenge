@@ -3,7 +3,7 @@ from torch import nn
 
 
 class WeightComputer(nn.Module):
-    def __init__(self, mode="constant", constant_weight=1.0, consistency_fn=None, consistency_neigh=1, logits=False):
+    def __init__(self, mode="constant", constant_weight=1.0, consistency_fn=None, consistency_neigh=1, logits=False, device="cpu"):
         """
         :param mode: in {'constant', 'balance_gt', 'pred_entropy', 'pred_consistency', 'pred_merged}
         :param constant_weight:
@@ -17,13 +17,20 @@ class WeightComputer(nn.Module):
         self._consistency_fn = consistency_fn
         self._consistency_neigh = consistency_neigh
         self._is_logits = logits
+        self._device = device
         if consistency_neigh != 1 and consistency_neigh != 2:
             raise ValueError("invalid consistency neighbourhood {}".format(consistency_neigh))
         if ("consistency" in self._mode or "multi" in self._mode) and consistency_fn is None:
             raise ValueError("missing consistency function for weight computation")
 
-    def forward(self, y, y_gt):
-        return torch.maximum(self._weight(y, y_gt), y_gt)
+    def forward(self, y, y_gt, apply_weights=None):
+        weights = torch.maximum(self._weight(y, y_gt), y_gt)
+        if apply_weights is not None:
+            if apply_weights.ndim == 1 and apply_weights.size()[0] != weights.size()[0]:
+                raise ValueError("apply weights vector does not have the correct dimensions {}".format(apply_weights.size()))
+            apply_weights = apply_weights.unsqueeze(1).unsqueeze(1).unsqueeze(1).int()
+            weights = torch.maximum(weights, apply_weights)
+        return weights
 
     def _y(self, y):
         if self._is_logits:
@@ -35,8 +42,11 @@ class WeightComputer(nn.Module):
         if self._mode == "constant":
             return torch.full(y.size(), self._constant_weight, device=self._device)
         elif self._mode == "balance_gt":
-            ratio = torch.mean(y_gt, dim=[1, 2], keepdim=True)
-            return (1 - y_gt) * ratio / (1 - ratio)
+            ratio = torch.mean(y_gt, dim=[2, 3], keepdim=True)
+            ratio[ratio >= 1] = 0  # handle case of no background
+            w = (1 - y_gt) * ratio / (1 - ratio)
+            w[w > 1.0] = 1.0  # don't overweight background even if they are minority
+            return w
         elif self._mode == "pred_entropy":
             return self._entropy(y)
         elif self._mode == "pred_consistency":

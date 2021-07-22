@@ -193,14 +193,16 @@ class AnnotationCrop(BaseAnnotationCrop):
         y = np.random.randint(0, height - self._tile_size + 1)
         crop = self._robust_load_crop(x, y)
         mask = self._mask(x, y, self._tile_size, self._tile_size)
-        return (x, y, self._tile_size, self._tile_size), crop, Image.fromarray(mask.astype(np.uint8))
+        pil_mask = Image.fromarray(mask.astype(np.uint8))
+        return (x, y, self._tile_size, self._tile_size), crop, pil_mask, pil_mask, False
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
         _, width, height = self._extract_image_box()
         image = self._robust_load_image()
         mask = self._mask(0, 0, width, height)
-        return image, Image.fromarray(mask.astype(np.uint8))
+        pil_mask = Image.fromarray(mask.astype(np.uint8))
+        return image, pil_mask, pil_mask, False
 
     def _mask(self, window_x, window_y, window_width, window_height):
         (crop_x, crop_y), crop_width, crop_height = self.image_box
@@ -260,18 +262,18 @@ class AnnotationCropWithCue(BaseAnnotationCrop):
         self._cue_only = value
 
     def random_crop_and_mask(self):
-        crop_location, crop, mask = self._crop.random_crop_and_mask()
+        crop_location, crop, mask, _, _ = self._crop.random_crop_and_mask()
         x, y, w, h = crop_location
         final_mask = self._cue[y:(y+h), x:(x+w)]
         if not self.cue_only:
             final_mask[np.asarray(mask) > 0] = 255
-        return crop_location, crop, Image.fromarray(final_mask.astype(np.uint8), "L")
+        return crop_location, crop, mask, Image.fromarray(final_mask.astype(np.uint8), "L"), True
 
     def crop_and_mask(self):
-        crop, mask = self._crop.crop_and_mask()
+        crop, mask, _, _ = self._crop.crop_and_mask()
         final_mask = self._cue
         final_mask[np.asarray(mask) > 0] = 255
-        return crop, Image.fromarray(final_mask)
+        return crop, mask, Image.fromarray(final_mask), True
 
     @property
     def cue(self):
@@ -291,16 +293,17 @@ class RemoteAnnotationCropTrainDataset(Dataset):
 
     def __getitem__(self, item):
         annotation_crop = self._crops[item]
-        _, image, mask = annotation_crop.random_crop_and_mask()
+        _, image, gt_mask, mask, has_cue = annotation_crop.random_crop_and_mask()
 
         if self._both_trans is not None:
-            image, mask = self._both_trans([image, mask])
+            image, gt_mask, mask = self._both_trans([image, gt_mask, mask])
         if self._image_trans is not None:
             image = self._image_trans(image)
         if self._mask_trans is not None:
             mask = self._mask_trans(mask)
+            gt_mask = self._mask_trans(gt_mask)
 
-        return image, mask
+        return image, gt_mask, mask, has_cue
 
     def __len__(self):
         return len(self._crops)

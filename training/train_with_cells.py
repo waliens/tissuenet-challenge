@@ -242,11 +242,10 @@ def main(argv):
         print("base cell crops... ", end="", flush=True)
         annots_per_image = group_annot_per_image(train_collec)
         intersecting = {
-            annot.id: []
-                # generic_match_search(
-                # key_item=box(*wkt.loads(annot.location).bounds),
-                # elements=annots_per_image[annot.image],
-                # **match_params)
+            annot.id: generic_match_search(
+                key_item=box(*wkt.loads(annot.location).bounds),
+                elements=annots_per_image[annot.image],
+                **match_params)
             for annot in train_collec
         }
         print("done")
@@ -283,7 +282,7 @@ def main(argv):
         weight_computer = WeightComputer(mode=args.weights_mode, constant_weight=args.weights_constant,
                                          consistency_fn=args.weights_consistency_fn,
                                          consistency_neigh=args.weights_neighbourhood,
-                                         logits=True)
+                                         logits=True, device=device)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
@@ -349,12 +348,12 @@ def main(argv):
 
             epoch_losses = list()
             unet.train()
-            for i, (x, y) in enumerate(loader):
-                x, y = (t.to(device) for t in [x, y])
+            for i, (x, y_gt, y, has_cues) in enumerate(loader):
+                x, y, y_gt, has_cues = (t.to(device) for t in [x, y, y_gt, has_cues])
                 y_pred = unet.forward(x)
-                if weights_on:
+                if weights_on and torch.any(has_cues):
                     with torch.no_grad():
-                        weights = weight_computer(y_pred.detach(), y.detach())
+                        weights = weight_computer(y_pred.detach(), y_gt.detach())
                     loss = loss_fn(y_pred, y, weights=weights)
                 else:
                     loss = loss_fn(y_pred, y)
