@@ -196,6 +196,7 @@ def main(argv):
         parser.add_argument("-wc", "--weights_constant", dest="weights_constant", type=float, default=1.0)
         parser.add_argument("-wf", "--weights_consistency_fn", dest="weights_consistency_fn", default="absolute")
         parser.add_argument("-wn", "--weights_neighbourhood", dest="weights_neighbourhood", type=int, default=1)
+        parser.add_argument("-wmin", "--weights_minimum", dest="weights_minimum", type=float, default=0.0)
         parser.add_argument("--sparse_data_rate", dest="sparse_data_rate", type=float, default=1.0, help="<=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--sparse_data_max", dest="sparse_data_max", type=float, default=1.0, help="-1 = same as non sparse; <=1.0 = proportion; >1 = number of samples")
         parser.add_argument("--data_path", "--dpath", dest="data_path",
@@ -282,6 +283,7 @@ def main(argv):
         weight_computer = WeightComputer(mode=args.weights_mode, constant_weight=args.weights_constant,
                                          consistency_fn=args.weights_consistency_fn,
                                          consistency_neigh=args.weights_neighbourhood,
+                                         min_weight=args.weights_minimum,
                                          logits=True, device=device)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
@@ -351,7 +353,7 @@ def main(argv):
             for i, (x, y_gt, y, has_cues) in enumerate(loader):
                 x, y, y_gt, has_cues = (t.to(device) for t in [x, y, y_gt, has_cues])
                 y_pred = unet.forward(x)
-                if weights_on and torch.any(has_cues):
+                if e != 0 and weights_on and torch.any(has_cues):
                     with torch.no_grad():
                         weights = weight_computer(y_pred.detach(), y_gt.detach())
                     loss = loss_fn(y_pred, y, weights=weights)
@@ -455,7 +457,7 @@ class TrainComputation(Computation):
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
-            weights_neighbourhood=1, rseed=42):
+            weights_neighbourhood=1, rseed=42, weights_minimum=0.0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -488,7 +490,8 @@ class TrainComputation(Computation):
                 "--weights_mode", str(weights_mode),
                 "--weights_constant", str(weights_constant),
                 "--weights_consistency_fn", str(weights_consistency_fn),
-                "--weights_neighbourhood", str(weights_neighbourhood)]
+                "--weights_neighbourhood", str(weights_neighbourhood),
+                "--weights_minimum", str(weights_minimum)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:

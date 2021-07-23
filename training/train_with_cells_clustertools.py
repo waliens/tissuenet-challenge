@@ -32,14 +32,16 @@ def weight_exclude(**kwargs):
     wconstant_is_one = 0.99 < kwargs["weights_constant"] < 1.01
     wmode_is_not_constant = kwargs["weights_mode"] != "constant"
     wmode_is_constant = not wmode_is_not_constant
+    min_weight_is_zero = kwargs.get("weights_minimum") < 0.01
     constant_and_is_one = (wmode_is_constant and wconstant_is_one)
-    return (not kwargs.get("no_distillation") or constant_and_is_one) \
-        and (not kwargs.get("no_groundtruth") or constant_and_is_one) \
+    return (not kwargs.get("no_distillation") or (constant_and_is_one and min_weight_is_zero)) \
+        and (not kwargs.get("no_groundtruth") or (constant_and_is_one and min_weight_is_zero)) \
         and (wmode_is_constant or wconstant_is_one) \
         and (kwargs.get("weights_mode") in {"pred_consistency", "pred_merged"} or
                 (kwargs.get("weights_consistency_fn") == "absolute" and kwargs.get("weights_neighbourhood") == 1)) \
-        and (kwargs.get("loss") == "bce" or constant_and_is_one) \
-        and (kwargs.get("sparse_start_after") < 50 or constant_and_is_one)
+        and (kwargs.get("loss") == "bce" or (constant_and_is_one and min_weight_is_zero)) \
+        and (kwargs.get("sparse_start_after") < 50 or (constant_and_is_one and min_weight_is_zero)) \
+        and (kwargs.get("weights_mode") not in {"constant", "gt_balance"} or min_weight_is_zero)
 
 
 if __name__ == "__main__":
@@ -58,9 +60,9 @@ if __name__ == "__main__":
     param_set.add_parameters(lr=[0.001])
     param_set.add_parameters(init_fmaps=[8])
     param_set.add_parameters(zoom_level=[0])
-    param_set.add_parameters(rseed=1) #list(range(10)))
+    param_set.add_parameters(rseed=list(range(10)))
     param_set.add_parameters(loss=["bce"])
-    param_set.add_parameters(sparse_start_after=[0]) #, -1, 10, 50])
+    param_set.add_parameters(sparse_start_after=[0, -1, 15, 50])
     param_set.add_parameters(aug_hed_bias_range=[0.025])
     param_set.add_parameters(aug_hed_coef_range=[0.025])
     param_set.add_parameters(aug_blur_sigma_extent=[0.1])
@@ -71,11 +73,12 @@ if __name__ == "__main__":
     param_set.add_parameters(save_cues=[False])
     param_set.add_parameters(sparse_data_rate=[1.0])
     param_set.add_parameters(sparse_data_max=[1.0])
-    param_set.add_parameters(no_distillation=[False])#, True])
+    param_set.add_parameters(no_distillation=[False, True])
     param_set.add_parameters(no_groundtruth=[False])
-    param_set.add_parameters(weights_mode=["pred_entropy"]) #, "constant", "balance_gt", "pred_consistency", "pred_merged"])
-    param_set.add_parameters(weights_constant=[1.0, 0.5, 0.25])
+    param_set.add_parameters(weights_mode=["pred_entropy", "pred_merged", "constant", "balance_gt", "pred_consistency"])
+    param_set.add_parameters(weights_constant=[1.0, 0.5, 0.4])
     param_set.add_parameters(weights_consistency_fn=["quadratic", "absolute"])
+    param_set.add_parameters(weights_minimum=[0.0, 0.5])
     param_set.add_parameters(weights_neighbourhood=[1, 2])
 
     constrained = ConstrainedParameterSet(param_set)
