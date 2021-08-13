@@ -491,3 +491,54 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         del(all_ys[crop.annotation.id])
 
     return awcues
+
+
+class DatasetsGenerator(object):
+    @abstractmethod
+    def sets(self):
+        """
+        Returns
+        -------
+        incomplete: iterable
+        complete: iterable
+        val_set: iterable
+        """
+        pass
+
+    @abstractmethod
+    def iterable_to_dataset(self, iterable, **kwargs):
+        pass
+
+    @abstractmethod
+    def val_roi_foreground(self, val_roi):
+        pass
+
+
+class GraduallyAddMoreDataState(object):
+    def __init__(self, sparse, non_sparse, data_rate=1.0, data_max=1.0):
+        self._data_rate = data_rate
+        self._data_max = data_max
+        self._sparse = sparse
+        self._non_sparse = non_sparse
+        self._current_amount = 0
+
+    @property
+    def abs_data_max(self):
+        if self._data_max < 0:
+            return min(len(self._non_sparse), len(self._sparse))
+        elif 0 <= self._data_max <= 1:
+            return int(self._data_max * len(self._sparse))
+        else:
+            return min(int(self._data_max), len(self._sparse))
+
+    @property
+    def abs_date_to_add(self):
+        if 0 <= self._data_rate <= 1:
+            return int(self._data_rate * len(self._sparse))
+        elif self._data_rate > 1:
+            return int(self._data_max)
+
+    def get_next(self):
+        self._current_amount += self.abs_date_to_add
+        self._current_amount = min(self._current_amount, self.abs_data_max)
+        return self._sparse[:self._current_amount]
