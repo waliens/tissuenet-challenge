@@ -4,6 +4,19 @@ import torch.nn.functional as F
 from torch.nn import BCEWithLogitsLoss
 
 
+class FocalLossWithLogits(BCEWithLogitsLoss):
+    def __init__(self, gamma=1, alpha=0.5, reduction="none", **kwargs):
+        super().__init__(reduction="none", **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+        self._floss_reduc = reduction
+
+    def forward(self, input, target):
+        bce = super().forward(input, target)
+        pt = torch.exp(-bce)
+        alphas = self.alpha
+
+
 class BCEWithWeights(BCEWithLogitsLoss):
     def __init__(self, reduction="none", **kwargs):
         super().__init__(reduction="none", **kwargs)

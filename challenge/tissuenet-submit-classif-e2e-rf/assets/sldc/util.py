@@ -154,7 +154,7 @@ def alpha_rasterize(image, polygon):
                 seq_pts = boundary.coords
                 draw.polygon(seq_pts, outline=0, fill=255)
 
-    # merge mask with images
+    # merge mask with tensors
     rasterized = np.zeros((height, width, depth), dtype=source.dtype)
     rasterized[:, :, 0:depth-1] = source
     rasterized[:, :, depth-1] = alpha

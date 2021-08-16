@@ -132,7 +132,7 @@ def main():
     param_grid = {"min_samples_leaf": [1, 25, 50, 100, 250, 500]}
     folder = KFold(n_splits=5)
 
-    print("\t".join(["arch", "pretrained", *aug_params, "aggr", "min_sample_split", "train_acc", "slide_cv", "slide_test_acc", "slide_test_score"]))
+    print("\t".join(["arch", "pretrained", *aug_params, "reduction", "min_sample_split", "train_acc", "slide_cv", "slide_test_acc", "slide_test_score"]))
     for i, model_filename in enumerate(model_names):
         results = storage.load_result("Computation-tissuenet-e2e-eval-3rd-" + str(i))
         arch, pret = model_filename.split("_")[:2]
