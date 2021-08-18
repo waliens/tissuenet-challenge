@@ -20,8 +20,8 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
-from dataset import RemoteAnnotationCropTrainDataset, predict_roi, predict_annotation_crops_with_cues, \
-    GraduallyAddMoreDataState
+from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState
+from monuseg import MonusegDatasetGenerator
 from thyroid import ThyroidDatasetGenerator
 from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
 from weight_generator import WeightComputer
@@ -104,6 +104,8 @@ def main(argv):
         parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
         parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
         parser.add_argument("--dataset", dest="dataset", default="thyroid", help="in ['thyroid', 'monuseg', 'pannuke']")
+        parser.add_argument("--monu_rr", dest="monuseg_remove_ratio", default=0.0, type=float)
+        parser.add_argument("--monu_ms", dest="monuseg_missing_seed", default=42, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--save_cues", dest="save_cues", action="store_true")
@@ -194,6 +196,10 @@ def main(argv):
 
         if args.dataset == "thyroid":
             dataset = ThyroidDatasetGenerator(args.data_path, args.tile_size, args.zoom_level)
+        elif args.dataset == "monuseg":
+            dataset = MonusegDatasetGenerator(args.data_path, args.tile_size,
+                                              missing_seed=args.monuseg_missing_seed,
+                                              remove_ratio=args.monuseg_remove_ratio)
         else:
             raise ValueError("Unknown dataset '{}'".format(args.dataset))
 
@@ -207,8 +213,7 @@ def main(argv):
 
         complete = dataset.iterable_to_dataset(complete_list, **trans_dict)
         if args.sparse_start_after >= 0:
-            # use RemoteAnnot dataset as an empty ones (no way to define empty dataset by default in pytorch)
-            incomplete = RemoteAnnotationCropTrainDataset([], **trans_dict)
+            incomplete = CropTrainDataset([], **trans_dict)
         else:
             incomplete = dataset.iterable_to_dataset(add_data_state.get_next())
 
@@ -338,7 +343,7 @@ class TrainComputation(Computation):
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
-            weights_neighbourhood=1, rseed=42, weights_minimum=0.0):
+            weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_mr=0.0, monu_rs=42):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -372,7 +377,10 @@ class TrainComputation(Computation):
                 "--weights_constant", str(weights_constant),
                 "--weights_consistency_fn", str(weights_consistency_fn),
                 "--weights_neighbourhood", str(weights_neighbourhood),
-                "--weights_minimum", str(weights_minimum)]
+                "--weights_minimum", str(weights_minimum),
+                "--dataset", str(dataset),
+                "--monu_mr", str(monu_mr),
+                "--monu_rs", str(monu_rs)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:

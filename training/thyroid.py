@@ -10,7 +10,7 @@ from shapely.affinity import affine_transform
 from shapely.geometry import box
 from sldc import batch_split
 
-from dataset import RemoteAnnotationCropTrainDataset, AnnotationCrop, DatasetsGenerator
+from dataset import CropTrainDataset, AnnotationCrop, DatasetsGenerator
 
 THYROID_PROJECT_ID = 77150529
 VAL_IDS = {77150767, 77150761, 77150809}
@@ -149,7 +149,7 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
         return self.base_cell_crops, self.pattern_crops, self.val_crops
 
     def iterable_to_dataset(self, iterable, **kwargs):
-        return RemoteAnnotationCropTrainDataset(iterable, **kwargs)
+        return CropTrainDataset(iterable, **kwargs)
 
     def val_roi_foreground(self, val_roi):
         return self.val_rois_to_intersect[val_roi.annotation.id]

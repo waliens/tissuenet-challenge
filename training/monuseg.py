@@ -5,13 +5,15 @@ from math import ceil
 
 import cv2
 import numpy as np
+from PIL import Image
 from cytomine import Cytomine
 from cytomine.models import ImageInstanceCollection, AnnotationCollection, PropertyCollection
 from rasterio.features import rasterize
 from shapely import wkt
 from sklearn.utils import check_random_state
+from torch.utils.data.dataset import Dataset
 
-from dataset import DatasetsGenerator, convert_poly
+from dataset import DatasetsGenerator, convert_poly, BaseCrop, MemoryCrop, CropTrainDataset
 
 MONUSEG_PROJECT = 532820586
 
@@ -40,10 +42,13 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
         else:
             test[image.id] = image
 
-    train_ids = list(train.keys())
-    random_state.shuffle(train_ids)
-    half_train = len(train_ids) // 2
-    incomplete = set(train_ids[half_train:])
+    if remove_ratio > 0:
+        train_ids = list(train.keys())
+        random_state.shuffle(train_ids)
+        half_train = len(train_ids) // 2
+        incomplete = set(train_ids[half_train:])
+    else:
+        incomplete = set()
 
     for image in simages:
         if image.id in incomplete:
@@ -71,26 +76,52 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
         cv2.imwrite(os.path.join(mask_path, image.originalFilename.replace(".tif", ".png")), mask)
 
 
-
-class MonusegDatasetsGenerator(DatasetsGenerator):
-    def __init__(self, data_path, missing_seed=42, remove_ratio=0.0):
+class MonusegDatasetGenerator(DatasetsGenerator):
+    def __init__(self, data_path, tile_size, mask_folder="masks", image_folder="images", incomplete_folder="incomplete",
+                     complete_folder="complete", missing_seed=42, remove_ratio=0.0):
         self._missing_seed = missing_seed
         self._remove_ratio = remove_ratio
         self._data_path = os.path.join(data_path, "{}_{:0.4f}".format(missing_seed, remove_ratio))
+        self._train_path = os.path.join(self._data_path, "train")
+        self._test_path = os.path.join(self._data_path, "test")
+        self._mask_folder = mask_folder
+        self._image_folder = image_folder
+        self._incomplete_folder = incomplete_folder
+        self._complete_folder = complete_folder
+        self._tile_size = tile_size
+
+        images = ImageInstanceCollection().fetch_with_filter("project", MONUSEG_PROJECT)
+        annotations = AnnotationCollection(project=MONUSEG_PROJECT, showWKT=True, showMeta=True).fetch()
+        a2i = defaultdict(list)
+        for annot in annotations:
+            a2i[annot.image].append(annot)
+        self._annots_per_image = dict()
+        for image in images:
+            self._annots_per_image[image.originalFilename] = a2i[image.id]
+
+    def _crops(self, path):
+        images, masks = list(), list()
+        for image_filename in os.listdir(os.path.join(path, self._image_folder)):
+            images.append(os.path.join(path, self._image_folder, image_filename))
+            mask_filename = image_filename.rsplit(".", 1)[0] + ".png"
+            masks.append(os.path.join(path, self._mask_folder, mask_filename))
+        return [MemoryCrop(i, m, tile_size=self._tile_size) for i, m in zip(images, masks)]
 
     def sets(self):
-        pass
+        return self._crops(os.path.join(self._train_path, self._incomplete_folder)), \
+                self._crops(os.path.join(self._train_path, self._complete_folder)), \
+                self._crops(self._test_path)
 
     def iterable_to_dataset(self, iterable, **kwargs):
-        pass
+        return CropTrainDataset(iterable, **kwargs)
 
     def val_roi_foreground(self, val_roi):
-        pass
+        return self._annots_per_image[os.path.basename(val_roi.img_path)]
 
 
 def main(argv):
     with Cytomine.connect_from_cli(argv) as conn:
-        get_monuseg_data("/scratch/users/rmormont/monuseg", remove_ratio=0.6, seed=42)
+        get_monuseg_data("/scratch/users/rmormont/monuseg", remove_ratio=0.0, seed=42)
 
 
 if __name__ == "__main__":
