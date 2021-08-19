@@ -116,7 +116,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("monuseg-unet-debug", constrained, make_build_fn(**env_params))
+    experiment = Experiment("monuseg-unet-weights", constrained, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)
