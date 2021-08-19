@@ -41,7 +41,7 @@ def weight_exclude(**kwargs):
                 (kwargs.get("weights_consistency_fn") == "absolute" and kwargs.get("weights_neighbourhood") == 1)) \
         and (kwargs.get("loss") == "bce" or (constant_and_is_one and min_weight_is_zero)) \
         and (kwargs.get("sparse_start_after") < 50 or (constant_and_is_one and min_weight_is_zero)) \
-        and (kwargs.get("weights_mode") not in {"constant", "gt_balance"} or min_weight_is_zero)
+        and (kwargs.get("weights_mode") not in {"constant", "balance_gt"} or min_weight_is_zero)
 
 
 if __name__ == "__main__":
