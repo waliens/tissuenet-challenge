@@ -215,7 +215,7 @@ def main(argv):
         if args.sparse_start_after >= 0:
             incomplete = CropTrainDataset([], **trans_dict)
         else:
-            incomplete = dataset.iterable_to_dataset(add_data_state.get_next())
+            incomplete = dataset.iterable_to_dataset(add_data_state.get_next(), **trans_dict)
         loader_args = {
             "shuffle": True, "batch_size": args.batch_size, "num_workers": args.n_jobs, "worker_init_fn": worker_init}
         if args.iter_per_epoch > 0:
@@ -349,7 +349,7 @@ class TrainComputation(Computation):
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
-            weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_mr=0.0, monu_rs=42,
+            weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
             iter_per_epoch=0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
@@ -386,8 +386,8 @@ class TrainComputation(Computation):
                 "--weights_neighbourhood", str(weights_neighbourhood),
                 "--weights_minimum", str(weights_minimum),
                 "--dataset", str(dataset),
-                "--monu_mr", str(monu_mr),
-                "--monu_rs", str(monu_rs),
+                "--monu_rr", str(monu_rr),
+                "--monu_ms", str(monu_ms),
                 "--iter_per_epoch", str(iter_per_epoch)]
         if save_cues:
             argv.append("--save_cues")

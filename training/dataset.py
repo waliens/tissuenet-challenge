@@ -149,7 +149,7 @@ class AnnotationCrop(BaseCrop):
 
     @property
     def unique_identifier(self):
-        return self._annotation.id
+        return str(self._annotation.id)
 
     def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
         start = crop_start
@@ -293,7 +293,9 @@ class MemoryCrop(BaseCrop):
         self._img_path = img_path
         self._mask_path = mask_path
         self._image = Image.open(self._img_path)
+        self._image.load()
         self._mask = Image.open(self._mask_path)
+        self._mask.load()
         self._tile_size = tile_size
 
     @property
@@ -544,7 +546,7 @@ class MultiCropsSet(Dataset):
     def __getitem__(self, index):
         dataset_index, relative_index = get_sample_indexes(index, self._cumsum_sizes)
         dataset = self._datasets[dataset_index]
-        return (dataset._crop.unique_ientifier,) + dataset[relative_index]
+        return (dataset._crop.unique_identifier,) + dataset[relative_index]
 
     def __len__(self):
         return self._cumsum_sizes[-1] + len(self._datasets[-1])
@@ -560,7 +562,7 @@ def sizeof_fmt(num, suffix='B'):
 
 def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1):
     if len(crops) == 0:
-        return 0
+        return list()
     dataset = MultiCropsSet(crops, in_trans=in_trans, overlap=overlap)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
                         num_workers=n_jobs, pin_memory=True, drop_last=False)
@@ -575,11 +577,11 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         y = torch.sigmoid(net.forward(t))
         detached = y.detach().cpu().numpy()
         for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
-            all_ys[annot_id.item()].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
+            all_ys[annot_id].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
 
     awcues = list()
     for crop in crops:
-        _, w, h = crop.image_box
+        w, h = crop.width, crop.height
         cue = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
         for tile_id, (x_off, y_off), y_pred in all_ys[crop.unique_identifier]:
