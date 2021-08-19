@@ -1,5 +1,4 @@
 import os
-from abc import abstractmethod
 from argparse import ArgumentParser
 from datetime import datetime
 from functools import partial
@@ -16,7 +15,7 @@ from sklearn import metrics
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
@@ -103,6 +102,7 @@ def main(argv):
         parser.add_argument("-z", "--zoom_level", dest="zoom_level", default=0, type=int)
         parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
         parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
+        parser.add_argument("-i", "--iter_per_epoch", dest="iter_per_epoch", default=0, type=int)
         parser.add_argument("--dataset", dest="dataset", default="thyroid", help="in ['thyroid', 'monuseg', 'pannuke']")
         parser.add_argument("--monu_rr", dest="monuseg_remove_ratio", default=0.0, type=float)
         parser.add_argument("--monu_ms", dest="monuseg_missing_seed", default=42, type=int)
@@ -216,6 +216,13 @@ def main(argv):
             incomplete = CropTrainDataset([], **trans_dict)
         else:
             incomplete = dataset.iterable_to_dataset(add_data_state.get_next())
+        loader_args = {
+            "shuffle": True, "batch_size": args.batch_size, "num_workers": args.n_jobs, "worker_init_fn": worker_init}
+        if args.iter_per_epoch > 0:
+            loader_args["shuffle"] = False
+            sampler_fn = lambda ds: RandomSampler(ds, replacement=True, num_samples=args.iter_per_epoch * args.batch_size)
+        else:
+            sampler_fn = lambda ds: None
 
         print("Dataset")
         print("Size: ")
@@ -231,8 +238,7 @@ def main(argv):
 
             concat_dataset = ConcatDataset([complete, incomplete])
             print("Training dataset size: {}".format(len(concat_dataset)))
-            loader = DataLoader(concat_dataset, shuffle=True, batch_size=args.batch_size,
-                                num_workers=args.n_jobs, worker_init_fn=worker_init)
+            loader = DataLoader(concat_dataset, sampler=sampler_fn(concat_dataset), **loader_args)
 
             epoch_losses = list()
             unet.train()
@@ -343,7 +349,8 @@ class TrainComputation(Computation):
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
-            weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_mr=0.0, monu_rs=42):
+            weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_mr=0.0, monu_rs=42,
+            iter_per_epoch=0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -380,7 +387,8 @@ class TrainComputation(Computation):
                 "--weights_minimum", str(weights_minimum),
                 "--dataset", str(dataset),
                 "--monu_mr", str(monu_mr),
-                "--monu_rs", str(monu_rs)]
+                "--monu_rs", str(monu_rs),
+                "--iter_per_epoch", str(iter_per_epoch)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:
