@@ -152,4 +152,4 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
         return CropTrainDataset(iterable, **kwargs)
 
     def val_roi_foreground(self, val_roi):
-        return self.val_rois_to_intersect[val_roi.annotation.id]
+        return self.val_rois_to_intersect[val_roi.unique_identifier]

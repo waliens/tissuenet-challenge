@@ -74,19 +74,29 @@ class BaseCrop(object):
     def topology(self, width, height, overlap=0):
         return
 
-    @abstractmethod
     @property
+    @abstractmethod
     def width(self):
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def height(self):
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def offset(self):
+        pass
+
+    @property
+    @abstractmethod
+    def tile_size(self):
+        pass
+
+    @property
+    @abstractmethod
+    def unique_identifier(self):
         pass
 
 
@@ -136,6 +146,10 @@ class AnnotationCrop(BaseCrop):
     @property
     def offset(self):
         return self._extract_image_box()[0]
+
+    @property
+    def unique_identifier(self):
+        return self._annotation.id
 
     def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
         start = crop_start
@@ -281,6 +295,14 @@ class MemoryCrop(BaseCrop):
         self._image = Image.open(self._img_path)
         self._mask = Image.open(self._mask_path)
         self._tile_size = tile_size
+
+    @property
+    def unique_identifier(self):
+        return os.path.basename(self._img_path)
+
+    @property
+    def tile_size(self):
+        return self._tile_size
 
     @property
     def img_path(self):
@@ -442,7 +464,7 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     mask_dims = (height, width)
 
     # build ground truth
-    roi_poly = roi.polygon
+    roi_poly = box(x_min, y_min, x_min + width, y_min + height)
     ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
     ground_truth = [convert_poly(g, zoom_level, roi.height) for g in ground_truth]
     translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
@@ -488,7 +510,7 @@ def get_sample_indexes(index, cumsum):
     return dataset_index, relative_index
 
 
-class AnnotationCropTopoplogyDataset(Dataset):
+class CropTopoplogyDataset(Dataset):
     def __init__(self, crop, overlap=0, in_trans=None):
         self._dataset = TileTopologyDataset(crop.topology(crop.tile_size, crop.tile_size, overlap=overlap),
                                             trans=in_trans)
@@ -515,14 +537,14 @@ class MultiCropsSet(Dataset):
         """
         super().__init__()
         self._datasets = [
-            AnnotationCropTopoplogyDataset(crop, overlap=overlap, in_trans=in_trans)
+            CropTopoplogyDataset(crop, overlap=overlap, in_trans=in_trans)
             for crop in crops]
         self._sizes, self._cumsum_sizes = datasets_size_cumsum(self._datasets)
 
     def __getitem__(self, index):
         dataset_index, relative_index = get_sample_indexes(index, self._cumsum_sizes)
         dataset = self._datasets[dataset_index]
-        return (dataset._crop.annotation.id,) + dataset[relative_index]
+        return (dataset._crop.unique_ientifier,) + dataset[relative_index]
 
     def __len__(self):
         return self._cumsum_sizes[-1] + len(self._datasets[-1])
@@ -560,12 +582,12 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         _, w, h = crop.image_box
         cue = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
-        for tile_id, (x_off, y_off), y_pred in all_ys[crop.annotation.id]:
+        for tile_id, (x_off, y_off), y_pred in all_ys[crop.unique_identifier]:
             cue[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
             acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
         cue /= acc
         awcues.append(CropWithCue(crop, cue=cue))
-        del (all_ys[crop.annotation.id])
+        del (all_ys[crop.unique_identifier])
 
     return awcues
 
