@@ -217,7 +217,12 @@ def main(argv):
         else:
             incomplete = dataset.iterable_to_dataset(add_data_state.get_next(), **trans_dict)
         loader_args = {
-            "shuffle": True, "batch_size": args.batch_size, "num_workers": args.n_jobs, "worker_init_fn": worker_init}
+            "shuffle": True,
+            "batch_size": args.batch_size,
+            "num_workers": args.n_jobs,
+            "worker_init_fn": worker_init,
+            "pin_memory": True
+        }
         if args.iter_per_epoch > 0:
             loader_args["shuffle"] = False
             sampler_fn = lambda ds: RandomSampler(ds, replacement=True, num_samples=args.iter_per_epoch * args.batch_size)
