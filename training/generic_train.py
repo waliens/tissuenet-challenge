@@ -315,7 +315,7 @@ def main(argv):
             roc_auc = np.mean(val_roc_auc)
 
             th_opt = Thresholdable(all_y_true, all_y_pred)
-            thresholds, dices = thresh_exhaustive_eval(th_opt)
+            thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
             results["thresholds"].append((thresholds, dices))
             best_idx = np.argmax(dices)
             threshold, dice = thresholds[best_idx], dices[best_idx]
