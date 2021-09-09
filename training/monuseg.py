@@ -1,3 +1,4 @@
+import itertools
 import os
 import random
 from collections import defaultdict
@@ -11,17 +12,16 @@ from cytomine.models import ImageInstanceCollection, AnnotationCollection, Prope
 from rasterio.features import rasterize
 from shapely import wkt
 from sklearn.utils import check_random_state
-from torch.utils.data.dataset import Dataset
 
-from dataset import DatasetsGenerator, convert_poly, BaseCrop, MemoryCrop, CropTrainDataset
+from dataset import DatasetsGenerator, convert_poly, MemoryCrop, CropTrainDataset
 
 MONUSEG_PROJECT = 532820586
 
 
 def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", incomplete_folder="incomplete",
-                     complete_folder="complete", remove_ratio=0.0, seed=42):
+                     complete_folder="complete", remove_ratio=0.0, seed=42, n_complete=2):
     random_state = check_random_state(seed)
-    data_path = os.path.join(data_path, "{}_{:0.4f}".format(seed, remove_ratio))
+    data_path = os.path.join(data_path, "{}_{:0.4f}_{}".format(seed, remove_ratio, n_complete))
     train_path = os.path.join(data_path, "train")
     test_path = os.path.join(data_path, "test")
     images = ImageInstanceCollection().fetch_with_filter("project", MONUSEG_PROJECT)
@@ -42,13 +42,9 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
         else:
             test[image.id] = image
 
-    if remove_ratio > 0:
-        train_ids = list(train.keys())
-        random_state.shuffle(train_ids)
-        half_train = len(train_ids) // 2
-        incomplete = set(train_ids[half_train:])
-    else:
-        incomplete = set()
+    train_ids = list(train.keys())
+    random_state.shuffle(train_ids)
+    incomplete = set(train_ids[n_complete:])
 
     for image in simages:
         if image.id in incomplete:
@@ -78,10 +74,11 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
 
 class MonusegDatasetGenerator(DatasetsGenerator):
     def __init__(self, data_path, tile_size, mask_folder="masks", image_folder="images", incomplete_folder="incomplete",
-                     complete_folder="complete", missing_seed=42, remove_ratio=0.0):
+                     complete_folder="complete", missing_seed=42, remove_ratio=0.0, n_complete=1):
         self._missing_seed = missing_seed
         self._remove_ratio = remove_ratio
-        self._data_path = os.path.join(data_path, "{}_{:0.4f}".format(missing_seed, remove_ratio))
+        self._n_complete = n_complete
+        self._data_path = os.path.join(data_path, "{}_{:0.4f}_{}".format(missing_seed, remove_ratio, n_complete))
         self._train_path = os.path.join(self._data_path, "train")
         self._test_path = os.path.join(self._data_path, "test")
         self._mask_folder = mask_folder
@@ -121,7 +118,14 @@ class MonusegDatasetGenerator(DatasetsGenerator):
 
 def main(argv):
     with Cytomine.connect_from_cli(argv) as conn:
-        get_monuseg_data("/scratch/users/rmormont/monuseg", remove_ratio=0.0, seed=42)
+        np.random.seed(42)
+        remove_ratios = [0.0, 0.25, 0.5, 0.75, 0.9]
+        n_completes = [1, 2, 3, 4, 5, 10, 15]
+        seeds = np.random.randint(0, 99999999, [10])
+
+        for remove_ratio, n_complete, seed in itertools.product(remove_ratios, n_completes, seeds):
+            get_monuseg_data("/scratch/users/rmormont/monuseg",
+                             remove_ratio=remove_ratio, n_complete=n_complete, seed=seed)
 
 
 if __name__ == "__main__":
