@@ -20,11 +20,24 @@ from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
 from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState
+from threshold_optimizer import linear_search, Thresholdable, plot_thresh, thresh_exhaustive_eval
 from monuseg import MonusegDatasetGenerator
 from thyroid import ThyroidDatasetGenerator
 from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
 from weight_generator import WeightComputer
 from skimage import io
+
+
+def vstack(*args):
+    if len(args) == 0:
+        return
+    out = args[0]
+    i = 1
+    while out.ndim == 1 and out.shape[0] == 0:
+        out = args[i]
+        i += 1
+    return np.vstack([out, *args[i:]])
+
 
 
 def get_random_init_fn(seed):
@@ -106,9 +119,11 @@ def main(argv):
         parser.add_argument("--dataset", dest="dataset", default="thyroid", help="in ['thyroid', 'monuseg', 'pannuke']")
         parser.add_argument("--monu_rr", dest="monuseg_remove_ratio", default=0.0, type=float)
         parser.add_argument("--monu_ms", dest="monuseg_missing_seed", default=42, type=int)
+        parser.add_argument("--monu_nc", dest="monuseg_n_complete", default=1, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--save_cues", dest="save_cues", action="store_true")
+        parser.add_argument("--th_step", dest="th_step", default=0.01, type=float)
         parser.add_argument("--sparse_start_after", dest="sparse_start_after", default=0, type=int)
         parser.add_argument("--aug_hed_bias_range", dest="aug_hed_bias_range", type=float, default=0.025)
         parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
@@ -173,14 +188,6 @@ def main(argv):
             "both": MergedLoss(BCEWithLogitsLoss(reduction="mean"), DiceWithLogitsLoss(reduction="mean"))
         }.get(args.loss, BCEWithWeights(reduction="mean"))
 
-        results = {
-            "train_losses": [],
-            "val_losses": [],
-            "val_dice": [],
-            "val_metrics": [],
-            "save_path": []
-        }
-
         struct, visual = get_aug_transforms(
             aug_hed_bias_range=args.aug_hed_bias_range,
             aug_hed_coef_range=args.aug_hed_coef_range,
@@ -199,7 +206,8 @@ def main(argv):
         elif args.dataset == "monuseg":
             dataset = MonusegDatasetGenerator(args.data_path, args.tile_size,
                                               missing_seed=args.monuseg_missing_seed,
-                                              remove_ratio=args.monuseg_remove_ratio)
+                                              remove_ratio=args.monuseg_remove_ratio,
+                                              n_complete=args.monuseg_n_complete)
         else:
             raise ValueError("Unknown dataset '{}'".format(args.dataset))
 
@@ -236,6 +244,17 @@ def main(argv):
         print("- both (bef) : {}".format(len(complete_list) + len(incomplete_list)))
         print("- start (improved) sparse after epoch {}".format(args.sparse_start_after))
 
+        results = {
+            "train_losses": [],
+            "val_losses": [],
+            "val_dice": [],
+            "val_soft_dice": [],
+            "val_metrics": [],
+            "save_path": [],
+            "thresholds": [],
+            "threshold": []
+        }
+
         for e in range(args.epochs):
             print("########################")
             print("        Epoch {}".format(e))
@@ -268,11 +287,11 @@ def main(argv):
             val_losses = np.zeros(len(val_set_list), dtype=np.float)
             val_roc_auc = np.zeros(len(val_set_list), dtype=np.float)
             val_dice = np.zeros(len(val_set_list), dtype=np.float)
-            val_cm = np.zeros([len(val_set_list), 2, 2], dtype=np.int)
 
             print("------------------------------")
             print("Eval at epoch {}:".format(e))
 
+            all_y_pred, all_y_true = np.array([]), np.array([])
             for i, roi in enumerate(val_set_list):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
@@ -285,20 +304,30 @@ def main(argv):
                         zoom_level=args.zoom_level
                     )
 
+                all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
+                all_y_true = np.hstack([all_y_true, y_true.flatten()])
+
                 val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
                 val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
                 val_dice[i] = soft_dice_coefficient(y_true, y_pred)
-                val_cm[i] = metrics.confusion_matrix(y_true.flatten().astype(np.uint8), (y_pred.flatten() > 0.5).astype(np.uint8))
 
             val_loss = np.mean(val_losses)
             roc_auc = np.mean(val_roc_auc)
-            dice = np.mean(val_dice)
-            print("> val_loss: {:1.5f}".format(val_loss))
-            print("> roc_auc : {:1.5f}".format(roc_auc))
-            print("> dice    : {:1.5f}".format(dice))
-            cm = np.sum(val_cm, axis=0)
-            cnt = np.sum(val_cm)
-            print("CM at 0.5 threshold")
+
+            th_opt = Thresholdable(all_y_true, all_y_pred)
+            thresholds, dices = thresh_exhaustive_eval(th_opt)
+            results["thresholds"].append((thresholds, dices))
+            best_idx = np.argmax(dices)
+            threshold, dice = thresholds[best_idx], dices[best_idx]
+            cm = metrics.confusion_matrix(all_y_true.astype(np.uint8), (all_y_pred.flatten() > threshold).astype(np.uint8))
+            del all_y_pred, all_y_true
+            cnt = np.sum(cm)
+            soft_dice = np.mean(val_dice)
+            print("> val_loss : {:1.5f}".format(val_loss))
+            print("> roc_auc  : {:1.5f}".format(roc_auc))
+            print("> dice     : {:1.5f}".format(dice))
+            print("> soft dice: {:1.5f}".format(soft_dice))
+            print("CM at {:0.4f} threshold".format(threshold))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
             if args.sparse_start_after <= e:
@@ -331,15 +360,17 @@ def main(argv):
 
             results["val_losses"].append(val_loss)
             results["val_dice"].append(dice)
+            results["val_soft_dice"].append(soft_dice)
             results["val_metrics"].append(roc_auc)
             results["save_path"].append(filename)
+            results["threshold"].append(threshold)
 
         return results
 
 
 class TrainComputation(Computation):
     def __init__(self, exp_name, comp_name, host=None, private_key=None, public_key=None, n_jobs=1, device="cuda:0",
-                 save_path=None, data_path=None, context="n/a", storage_factory=PickleStorage, **kwargs):
+                 save_path=None, data_path=None, th_step=0.01, context="n/a", storage_factory=PickleStorage, **kwargs):
         super().__init__(exp_name, comp_name, context=context, storage_factory=storage_factory)
         self._n_jobs = n_jobs
         self._device = device
@@ -348,6 +379,7 @@ class TrainComputation(Computation):
         self._cytomine_public_key = public_key
         self._cytomine_host = host
         self._data_path = data_path
+        self._th_step = th_step
 
     def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0,
             sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
@@ -355,7 +387,7 @@ class TrainComputation(Computation):
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
             weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
-            iter_per_epoch=0):
+            monu_nc=1, iter_per_epoch=0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -393,7 +425,9 @@ class TrainComputation(Computation):
                 "--dataset", str(dataset),
                 "--monu_rr", str(monu_rr),
                 "--monu_ms", str(monu_ms),
-                "--iter_per_epoch", str(iter_per_epoch)]
+                "--monu_nc", str(monu_nc),
+                "--iter_per_epoch", str(iter_per_epoch),
+                "--th_step", str(self._th_step)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:
