@@ -38,8 +38,8 @@ def get_metric(metric_name, cube):
 
 
 def main(argv):
-    cube = build_datacube("monuseg-unet-weights")
-    param_names = ["no_distillation", "weights_mode", "weights_constant", "weights_consistency_fn", "weights_minimum", "weights_neighbourhood", "sparse_start_after"]
+    cube = build_datacube("monuseg-unet-missing")
+    param_names = ["monu_nc", "no_distillation", "weights_mode", "weights_constant", "weights_consistency_fn", "weights_minimum", "weights_neighbourhood", "sparse_start_after"]
     param_to_plot = ["monu_rr"]
 
     data = list()
@@ -49,31 +49,46 @@ def main(argv):
         if ext_cube.diagnose()["Missing ratio"] >= 1.0:
             continue
 
-        ymin, ymax = 1, 0
-        plt.figure()
+        fig, axs = plt.subplots(2, 1, sharex=True)
+        ax1, ax2 = axs
+
+        dice_ymin, dice_ymax = 1, 0
+        roc_ymin, roc_ymax = 1, 0
         for i, (in_param_values, in_cube) in enumerate(ext_cube.iter_dimensions(*param_to_plot)):
             if in_cube.diagnose()["Missing ratio"] > 0.0:
                 continue
 
-            val_dice = np.array(get_metric("val_metrics", in_cube))
+            val_dice = np.array(get_metric("val_dice", in_cube))
+            val_roc = np.array(get_metric("val_metrics", in_cube))
 
             dice_mean = np.mean(val_dice, axis=0)
             dice_std = np.std(val_dice, axis=0)
             x = np.arange(dice_mean.shape[0])
 
-            plt.plot(x, dice_mean, label=in_param_values[0], color=COLORS[i])
-            plt.fill_between(x, dice_mean - dice_std, dice_mean + dice_std,
+            roc_mean = np.mean(val_roc, axis=0)
+            roc_std = np.std(val_roc, axis=0)
+
+            ax1.plot(x, dice_mean, label=in_param_values[0], color=COLORS[i])
+            ax1.fill_between(x, dice_mean - dice_std, dice_mean + dice_std,
                              color=COLORS[i], alpha=0.6)
 
-            ymin = min(ymin, np.min(dice_mean))
-            ymax = max(ymax, np.max(dice_mean))
+            ax2.plot(x, roc_mean, label=in_param_values[0], color=COLORS[i])
+            ax2.fill_between(x, roc_mean - roc_std, roc_mean + roc_std,
+                             color=COLORS[i], alpha=0.6)
+
+            dice_ymin = min(dice_ymin, np.min(dice_mean))
+            dice_ymax = max(dice_ymax, np.max(dice_mean))
+            roc_ymin = min(roc_ymin, np.min(roc_mean))
+            roc_ymax = max(roc_ymax, np.max(roc_mean))
 
         plt.title("_".join(ext_param_values))
-        plt.xlim(0, 50)
-        plt.ylim(max(ymin - 0.1, 0), min(1, ymax + 0.1))
-        plt.legend()
-        plt.ylabel("val roc auc")
-        plt.xlabel("epoch")
+        ax1.set_xlim(0, 50)
+        ax1.set_ylim(max(dice_ymin - 0.1, 0), min(1, dice_ymax + 0.1))
+        ax2.set_ylim(max(roc_ymin - 0.1, 0), min(1, roc_ymax + 0.1))
+        ax2.legend()
+        ax1.set_ylabel("val dice (opt)")
+        ax2.set_ylabel("val roc auc")
+        ax2.set_xlabel("epoch")
         plt.savefig("_".join(ext_param_values) + ".png")
         plt.close()
 
