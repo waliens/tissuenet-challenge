@@ -119,7 +119,7 @@ if __name__ == "__main__":
     param_set.add_parameters(weights_minimum=[0.0])
     param_set.add_parameters(weights_neighbourhood=[2])
 
-    # param_set.add_separator()
+    param_set.add_separator()
     param_set.add_parameters(monu_ms=[21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575])
 
     constrained = ConstrainedParameterSet(param_set)
