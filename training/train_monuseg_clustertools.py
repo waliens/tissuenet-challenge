@@ -63,6 +63,13 @@ def min_weight_for_entropy(**kwargs):
     return kwargs.get("weights_mode") not in {"pred_entropy", "pred_merged"} or kwargs.get("weights_minimum") > 0.01
 
 
+def wmode_exclude_no_distil(**kwargs):
+    return kwargs.get("weights_mode") not in {"pred_consistency", "pred_merged", "pred_entropy"} or (
+        kwargs.get("sparse_start_after") < 50
+        and not kwargs.get("no_distillation")
+    )
+
+
 def not_using_incomplete(**kwargs):
     return kwargs.get("sparse_start_after") != 50 or (
             kwargs.get("weights_mode") == "constant"
@@ -121,10 +128,13 @@ if __name__ == "__main__":
 
     param_set.add_separator()
     param_set.add_parameters(monu_ms=[21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575])
+    param_set.add_separator()
+    param_set.add_parameters(weights_mode="pred_consistency")
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(remove_min_weight_0=min_weight_for_entropy)
     constrained.add_constraints(not_using_incomplete=not_using_incomplete)
+    constrained.add_constraints(wmode_exclude_no_distil=wmode_exclude_no_distil)
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
