@@ -115,17 +115,38 @@ class MonusegDatasetGenerator(DatasetsGenerator):
     def val_roi_foreground(self, val_roi):
         return self._annots_per_image[os.path.basename(val_roi.img_path)]
 
+    def crop(self, identifier):
+        # id is image original filename
+        filepath = self._find_by_walk(identifier, os.path.join(self._train_path, self._complete_folder, self._image_folder))
+        if filepath is None:
+            filepath = self._find_by_walk(identifier, os.path.join(self._test_path, self._image_folder))
+        # if filepath is None:
+        #     filepath = self._find_by_walk(identifier, os.path.join(self._train_path, self._incomplete_folder, self._image_folder))
+        if filepath is None:
+            raise ValueError("cannot find file with name '{}'".format(identifier))
+        mask_path = os.path.join(os.path.dirname(os.path.dirname(filepath)), self._mask_folder, identifier.replace(".tif", ".png"))
+        return MemoryCrop(filepath, mask_path, tile_size=self._tile_size)
+
+    def _find_by_walk(self, query, dir):
+        for dirpath, dirnames, filenames in os.walk(dir, topdown=False):
+            for filename in filenames:
+                if filename == query:
+                    return os.path.join(dirpath, filename)
+        return None
+
 
 def main(argv):
     with Cytomine.connect_from_cli(argv) as conn:
-        np.random.seed(42)
-        remove_ratios = [0.0, 0.25, 0.5, 0.75, 0.9]
-        n_completes = [1, 2, 3, 4, 5, 10, 15]
-        seeds = np.random.randint(0, 99999999, [10])
-
-        for remove_ratio, n_complete, seed in itertools.product(remove_ratios, n_completes, seeds):
-            get_monuseg_data("/scratch/users/rmormont/monuseg",
-                             remove_ratio=remove_ratio, n_complete=n_complete, seed=seed)
+        # np.random.seed(42)
+        # remove_ratios = [0.0, 0.25, 0.5, 0.75, 0.9]
+        # n_completes = [1, 2, 3, 4, 5, 10, 15]
+        # seeds = np.random.randint(0, 99999999, [10])
+        #
+        # for remove_ratio, n_complete, seed in itertools.product(remove_ratios, n_completes, seeds):
+        #     get_monuseg_data("/scratch/users/rmormont/monuseg",
+        #                      remove_ratio=remove_ratio, n_complete=n_complete, seed=seed)
+        get_monuseg_data("/scratch/users/rmormont/monuseg",
+                         remove_ratio=0, n_complete=30, seed=42)
 
 
 if __name__ == "__main__":

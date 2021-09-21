@@ -614,6 +614,10 @@ class DatasetsGenerator(object):
     def val_roi_foreground(self, val_roi):
         pass
 
+    @abstractmethod
+    def crop(self, identifier):
+        pass
+
 
 class GraduallyAddMoreDataState(object):
     def __init__(self, sparse, non_sparse, data_rate=1.0, data_max=1.0):
