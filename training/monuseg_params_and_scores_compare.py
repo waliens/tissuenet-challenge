@@ -1,7 +1,11 @@
+import itertools
+from collections import defaultdict
+
 import numpy as np
 from clustertools import build_datacube
 from matplotlib import pyplot as plt
 
+import imageio
 
 COLORS = [
     "#1f78b4",
@@ -63,6 +67,16 @@ def make_label(names, params):
     return ", ".join(["{}={}".format(n, p) for n, p in zip(names, params)])
 
 
+def readable_weights_mode(wm):
+    return {
+        "pred_entropy": "entr",
+        "pred_merged": "merg",
+        "constant": "csnt",
+        "balance_gt": "bala",
+        "pred_consistency": "csty"
+    }.get(wm, "n/a")
+
+
 def main(argv):
     baseline_cube = build_datacube("monuseg-unet-baseline")
 
@@ -78,6 +92,10 @@ def main(argv):
     data = list()
     headers = ["best_dice", "best_dice_std", "last_dice", "last_dice_std",
                "best_roc", "best_roc_std", "last_roc", "last_roc_std"] + param_names
+
+    color_ids = {(str(nd), str(wm)): i for i, (nd, wm) in enumerate(itertools.product(cube.domain["no_distillation"], cube.domain["weights_mode"]))}
+
+    filenames_by_ssa = defaultdict(list)
 
     n_ratio = len(cube.domain["monu_rr"])
     rr_map = {v: i for i, v in enumerate(sorted(cube.domain["monu_rr"], key=lambda v: float(v)))}
@@ -95,13 +113,13 @@ def main(argv):
         roc_ymin, roc_ymax = max(np.min(bl_roc_avg) - 0.1, 0), min(np.max(bl_roc_avg) + 0.1, 1.0)
         color_id = 1
 
-        for (rr, nd), in_cube in ext_cube.iter_dimensions("monu_rr", "no_distillation"):
+        for (rr, nd, wm), in_cube in ext_cube.iter_dimensions("monu_rr", "no_distillation", "weights_mode"):
             if in_cube.diagnose()["Missing ratio"] > 0.0:
                 continue
-            label = make_label(["d"], [int(not eval(nd))])
+            label = make_label(["d", "m"], [int(not eval(nd)), readable_weights_mode(wm)])
 
             dice_mean, dice_std, roc_mean, roc_std = plot_current_setup(
-                in_cube, [axes[0][rr_map[rr]], axes[1][rr_map[rr]]], label, COLORS[color_id])
+                in_cube, [axes[0][rr_map[rr]], axes[1][rr_map[rr]]], label, COLORS[1 + color_ids[(str(nd), str(wm))]])
 
             dice_ymin = min(dice_ymin, np.min(dice_mean))
             dice_ymax = max(dice_ymax, np.max(dice_mean))
@@ -123,14 +141,17 @@ def main(argv):
         axes[1][0].set_ylabel("val roc auc")
         plt.xlabel("epoch")
         plt.tight_layout()
-        plt.savefig("bl_" + "_".join(ext_param_values) + ".png")
+        filename = "bl_" + "_".join(ext_param_values) + ".png"
+        filenames_by_ssa[ext_param_values[1]].append((ext_param_values[0], filename))
+        plt.savefig(filename)
         plt.close()
-        print("plotted")
 
+    for ssa, files in filenames_by_ssa.items():
+        with imageio.get_writer("{}.gif".format(ssa), mode="I", duration=1) as writer:
+            for _, filename in sorted(files, key=lambda t: int(t[0])):
+                image = imageio.imread(filename)
+                writer.append_data(image)
 
-    print("\t".join(headers))
-    for d in data:
-        print("\t".join(d))
 
 
 if __name__ == "__main__":
