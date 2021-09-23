@@ -49,6 +49,7 @@ def plt_with_std(ax, x, mean, std, label, color):
 def plot_current_setup(cube, axes, label, color):
     val_dice = np.array(get_metric("val_dice", cube))
     val_roc = np.array(get_metric("val_metrics", cube))
+    val_thresh = np.array(get_metric("threshold", cube))
 
     dice_mean = np.mean(val_dice, axis=0)
     dice_std = np.std(val_dice, axis=0)
@@ -57,10 +58,14 @@ def plot_current_setup(cube, axes, label, color):
     roc_mean = np.mean(val_roc, axis=0)
     roc_std = np.std(val_roc, axis=0)
 
+    thresh_mean = np.mean(val_thresh, axis=0)
+    thresh_std = np.std(val_thresh, axis=0)
+
     plt_with_std(axes[0], x, dice_mean, dice_std, label, color)
     plt_with_std(axes[1], x, roc_mean, roc_std, label, color)
+    plt_with_std(axes[2], x, thresh_mean, thresh_std, label, color)
 
-    return dice_mean, dice_std, roc_mean, roc_std
+    return dice_mean, dice_std, roc_mean, roc_std, thresh_mean, thresh_std
 
 
 def make_label(names, params):
@@ -103,7 +108,7 @@ def main(argv):
         if ext_cube.diagnose()["Missing ratio"] >= 1.0:
             continue
 
-        fig, axes = plt.subplots(2, n_ratio, sharex=True, figsize=[12.8, 4.8])
+        fig, axes = plt.subplots(3, n_ratio, sharex=True, figsize=[12.8, 7.2])
 
         for i in range(n_ratio):
             plt_with_std(axes[0][i], np.arange(50), bl_dice_avg, bl_dice_std, label="baseline", color=COLORS[0])
@@ -118,8 +123,8 @@ def main(argv):
                 continue
             label = make_label(["d", "m"], [int(not eval(nd)), readable_weights_mode(wm)])
 
-            dice_mean, dice_std, roc_mean, roc_std = plot_current_setup(
-                in_cube, [axes[0][rr_map[rr]], axes[1][rr_map[rr]]], label, COLORS[1 + color_ids[(str(nd), str(wm))]])
+            dice_mean, dice_std, roc_mean, roc_std, thresh_mean, thresh_std = plot_current_setup(
+                in_cube, [axes[i][rr_map[rr]] for i in range(3)], label, COLORS[1 + color_ids[(str(nd), str(wm))]])
 
             dice_ymin = min(dice_ymin, np.min(dice_mean))
             dice_ymax = max(dice_ymax, np.max(dice_mean))
@@ -134,11 +139,13 @@ def main(argv):
             axes[0][i].set_title("% = {}".format(v))
             axes[0][i].set_ylim(max(dice_ymin - 0.1, 0), min(1, dice_ymax + 0.1))
             axes[1][i].set_ylim(max(roc_ymin - 0.1, 0), min(1, roc_ymax + 0.1))
-            axes[1][i].legend()
+            axes[2][i].set_ylim(0, 1)
+        axes[1][0].legend()
         plt.xlim(0, 50)
 
         axes[0][0].set_ylabel("val dice (opt)")
         axes[1][0].set_ylabel("val roc auc")
+        axes[2][0].set_ylabel("opt threshold")
         plt.xlabel("epoch")
         plt.tight_layout()
         filename = "bl_" + "_".join(ext_param_values) + ".png"
