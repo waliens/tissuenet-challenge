@@ -58,7 +58,12 @@ def colorize(gt, pred, border=False):
         colored[er_tp_mask, 1] = 0
         colored[er_tp_mask, 2] = 0
         mask = np.zeros(colored.shape[:2] + (1,), dtype=np.uint8)
-        mask[np.logical_or(np_gt > 0, np_pred > 0)] = 255
+        mask[fp_mask] = 255
+        mask[fn_mask] = 255
+        mask[tp_mask] = 255
+        mask[er_fp_mask] = 0
+        mask[er_fn_mask] = 0
+        mask[er_tp_mask] = 0
         return Image.fromarray(np.concatenate([colored, mask], axis=-1))
     else:
         return Image.fromarray(colored)
