@@ -64,10 +64,18 @@ def convert_poly(p, zoom, im_height):
 class BaseCrop(object):
     @abstractmethod
     def random_crop_and_mask(self):
+        """
+        if has_cue is False, gt_mask and cue_mask are equal to mask.
+        crop_loc, crop, gt_mask, cue_mask, mask, has_cue
+        """
         pass
 
     @abstractmethod
     def crop_and_mask(self):
+        """
+        if has_cue is False, gt_mask and cue_mask are equal to mask.
+        crop, gt_mask, cue_mask, mask, has_cue
+        """
         pass
 
     @abstractmethod
@@ -241,7 +249,7 @@ class AnnotationCrop(BaseCrop):
         crop = self._robust_load_crop(x, y)
         mask = self._mask(x, y, self._tile_size, self._tile_size)
         pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return (x, y, self._tile_size, self._tile_size), crop, pil_mask, pil_mask, False
+        return (x, y, self._tile_size, self._tile_size), crop, pil_mask, pil_mask, pil_mask, False
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
@@ -249,7 +257,7 @@ class AnnotationCrop(BaseCrop):
         image = self._robust_load_image()
         mask = self._mask(0, 0, width, height)
         pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return image, pil_mask, pil_mask, False
+        return image, pil_mask, pil_mask, pil_mask, False
 
     def _mask(self, window_x, window_y, window_width, window_height):
         (crop_x, crop_y), crop_width, crop_height = self.image_box
@@ -323,7 +331,7 @@ class MemoryCrop(BaseCrop):
         return 0, 0
 
     def crop_and_mask(self):
-        return self._image, self._mask, self._mask, False
+        return self._image, self._mask, self._mask, self._mask, False
 
     def random_crop_and_mask(self):
         width, height = self._image.width, self._image.height
@@ -331,7 +339,7 @@ class MemoryCrop(BaseCrop):
         y = np.random.randint(0, height - self._tile_size + 1)
         img_crop = self._image.crop([x, y, x + self._tile_size, y + self._tile_size])
         mask_crop = self._mask.crop([x, y, x + self._tile_size, y + self._tile_size])
-        return (x, y, self._tile_size, self._tile_size), img_crop, mask_crop, mask_crop, False
+        return (x, y, self._tile_size, self._tile_size), img_crop, mask_crop, mask_crop, mask_crop, False
 
     def topology(self, width, height, overlap=0):
         base = TileTopology(PilImage(self._img_path), tile_builder=DefaultTileBuilder(),
@@ -361,18 +369,23 @@ class CropWithCue(BaseCrop):
         self._cue_only = value
 
     def random_crop_and_mask(self):
-        crop_location, crop, mask, _, _ = self._crop.random_crop_and_mask()
+        crop_location, crop, mask, _, _, _ = self._crop.random_crop_and_mask()
         x, y, w, h = crop_location
         final_mask = self._cue[y:(y + h), x:(x + w)]
         if not self.cue_only:
             final_mask[np.asarray(mask) > 0] = 255
-        return crop_location, crop, mask, Image.fromarray(final_mask.astype(np.uint8), "L"), True
+        return (crop_location,
+                crop,
+                mask,
+                Image.fromarray(self._cue[y:(y + h), x:(x + w)], "L"),
+                Image.fromarray(final_mask.astype(np.uint8), "L"),
+                True)
 
     def crop_and_mask(self):
-        crop, mask, _, _ = self._crop.crop_and_mask()
-        final_mask = self._cue
+        crop, mask, _, _, _ = self._crop.crop_and_mask()
+        final_mask = np.copy(self._cue)
         final_mask[np.asarray(mask) > 0] = 255
-        return crop, mask, Image.fromarray(final_mask), True
+        return crop, mask, Image.fromarray(self._cue, "L"), Image.fromarray(final_mask), True
 
     @property
     def cue(self):
@@ -392,17 +405,18 @@ class CropTrainDataset(Dataset):
 
     def __getitem__(self, item):
         crop = self._crops[item]
-        _, image, gt_mask, mask, has_cue = crop.random_crop_and_mask()
+        _, image, gt_mask, cue_mask, mask, has_cue = crop.random_crop_and_mask()
 
         if self._both_trans is not None:
-            image, gt_mask, mask = self._both_trans([image, gt_mask, mask])
+            image, gt_mask, mask, cue_mask = self._both_trans([image, gt_mask, mask, cue_mask])
         if self._image_trans is not None:
             image = self._image_trans(image)
         if self._mask_trans is not None:
             mask = self._mask_trans(mask)
             gt_mask = self._mask_trans(gt_mask)
+            cue_mask = self._mask_trans(cue_mask)
 
-        return image, gt_mask, mask, has_cue
+        return image, gt_mask, cue_mask, mask, has_cue
 
     def __len__(self):
         return len(self._crops)

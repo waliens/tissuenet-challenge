@@ -266,12 +266,12 @@ def main(argv):
 
             epoch_losses = list()
             unet.train()
-            for i, (x, y_gt, y, has_cues) in enumerate(loader):
-                x, y, y_gt, has_cues = (t.to(device) for t in [x, y, y_gt, has_cues])
+            for i, (x, y_gt, y_cues, y, has_cues) in enumerate(loader):
+                x, y, y_gt, y_cues, has_cues = (t.to(device) for t in [x, y, y_gt, y_cues, has_cues])
                 y_pred = unet.forward(x)
                 if e != 0 and weights_on and torch.any(has_cues):
                     with torch.no_grad():
-                        weights = weight_computer(y_pred.detach(), y_gt.detach())
+                        weights = weight_computer(y_cues.detach(), y_gt.detach())
                     loss = loss_fn(y_pred, y, weights=weights)
                 else:
                     loss = loss_fn(y_pred, y)
