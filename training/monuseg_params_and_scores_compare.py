@@ -1,11 +1,15 @@
 import itertools
 from collections import defaultdict
+from pprint import pprint
 
 import numpy as np
 from clustertools import build_datacube
 from matplotlib import pyplot as plt
 
 import imageio
+
+from itertools import chain
+
 
 COLORS = [
     "#1f78b4",
@@ -41,9 +45,10 @@ def get_metric(metric_name, cube):
     return [p_cube(metric_name) for p_values, p_cube in cube.iter_dimensions(*cube.parameters)]
 
 
-def plt_with_std(ax, x, mean, std, label, color):
+def plt_with_std(ax, x, mean, std, label, color, do_std=True):
     ax.plot(x, mean, label=label, color=color)
-    ax.fill_between(x, mean - std, mean + std, color=color, alpha=0.6)
+    if do_std:
+        ax.fill_between(x, mean - std, mean + std, color=color, alpha=0.6)
 
 
 def plot_current_setup(cube, axes, label, color):
@@ -68,8 +73,17 @@ def plot_current_setup(cube, axes, label, color):
     return dice_mean, dice_std, roc_mean, roc_std, thresh_mean, thresh_std
 
 
-def make_label(names, params):
-    return ", ".join(["{}={}".format(n, p) for n, p in zip(names, params)])
+def make_label(wmode, params):
+    n, v = ["w", "d"], [readable_weights_mode(wmode), params['distillation']]
+    if wmode == "pred_consistency" or wmode == "pred_merged":
+        n.extend(["nh", "fn"])
+        v.extend([params["weights_neighbourhood"], params["weights_consistency_fn"][:4]])
+    elif not (wmode == "constant" or wmode == 'pred_entropy'):
+        raise ValueError("unknown wmode '{}'".format(wmode))
+    if wmode != "constant":
+        n.append("wmin")
+        v.append(params['weights_minimum'])
+    return ", ".join(["{}={}".format(n, p) for n, p in zip(n, v)])
 
 
 def readable_weights_mode(wm):
@@ -91,20 +105,25 @@ def main(argv):
     bl_dice_avg, bl_dice_std = np.mean(baseline_dice, axis=0).squeeze(), np.std(baseline_dice, axis=0).squeeze()
     bl_roc_avg, bl_roc_std = np.mean(baseline_roc, axis=0).squeeze(), np.std(baseline_roc, axis=0).squeeze()
 
-    cube = build_datacube("monuseg-unet-missing")
+    del baseline_cube
+
+    cube = build_datacube("monuseg-unet-missing")(weights_mode="constant")
+    weights_cube = build_datacube("monuseg-unet-weights")(weights_consistency_fn="quadratic")
+
     param_names = ["monu_nc", "sparse_start_after"]  # "weights_mode", "weights_constant", "weights_consistency_fn", "weights_minimum", "weights_neighbourhood",
 
-    data = list()
-    headers = ["best_dice", "best_dice_std", "last_dice", "last_dice_std",
-               "best_roc", "best_roc_std", "last_roc", "last_roc_std"] + param_names
+    # data = list()
+    # headers = ["best_dice", "best_dice_std", "last_dice", "last_dice_std",
+    #            "best_roc", "best_roc_std", "last_roc", "last_roc_std"] + param_names
 
-    color_ids = {(str(nd), str(wm)): i for i, (nd, wm) in enumerate(itertools.product(cube.domain["no_distillation"], cube.domain["weights_mode"]))}
+    color_ids = {}
+    next_avail_color_index = 0
 
     filenames_by_ssa = defaultdict(list)
 
     n_ratio = len(cube.domain["monu_rr"])
     rr_map = {v: i for i, v in enumerate(sorted(cube.domain["monu_rr"], key=lambda v: float(v)))}
-    for ext_param_values, ext_cube in cube.iter_dimensions(*param_names):
+    for ext_param_values, ext_cube in chain(cube.iter_dimensions(*param_names), weights_cube.iter_dimensions(*param_names)):
         if ext_cube.diagnose()["Missing ratio"] >= 1.0:
             continue
 
@@ -118,13 +137,27 @@ def main(argv):
         roc_ymin, roc_ymax = max(np.min(bl_roc_avg) - 0.1, 0), min(np.max(bl_roc_avg) + 0.1, 1.0)
         color_id = 1
 
-        for (rr, nd, wm), in_cube in ext_cube.iter_dimensions("monu_rr", "no_distillation", "weights_mode"):
+        for (rr, nd, wm, wfn, win, wneigh), in_cube in ext_cube.iter_dimensions(
+            "monu_rr", "no_distillation", "weights_mode",
+            "weights_consistency_fn", "weights_minimum", "weights_neighbourhood"
+        ):
             if in_cube.diagnose()["Missing ratio"] > 0.0:
                 continue
-            label = make_label(["d", "m"], [int(not eval(nd)), readable_weights_mode(wm)])
+            color_key = tuple(map(str, (rr, nd, wm, wfn, win, wneigh)))
+            color = color_ids.get(color_key)
+            if color is None:
+                color_ids[color_key] = next_avail_color_index
+                color = next_avail_color_index
+                next_avail_color_index += 1
+
+            label = make_label(wm, {
+                "monu_rr": rr, "distillation": int(not eval(nd)),
+                "weights_consistency_fn": wfn,
+                "weights_minimum": win, "weights_neighbourhood": wneigh
+            })
 
             dice_mean, dice_std, roc_mean, roc_std, thresh_mean, thresh_std = plot_current_setup(
-                in_cube, [axes[i][rr_map[rr]] for i in range(3)], label, COLORS[1 + color_ids[(str(nd), str(wm))]])
+                in_cube, [axes[i][rr_map[rr]] for i in range(3)], label, COLORS[color % len(COLORS)])
 
             dice_ymin = min(dice_ymin, np.min(dice_mean))
             dice_ymax = max(dice_ymax, np.max(dice_mean))
