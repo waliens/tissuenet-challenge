@@ -74,10 +74,10 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
 
 class MonusegDatasetGenerator(DatasetsGenerator):
     def __init__(self, data_path, tile_size, mask_folder="masks", image_folder="images", incomplete_folder="incomplete",
-                     complete_folder="complete", missing_seed=42, remove_ratio=0.0, n_complete=1):
+                 complete_folder="complete", missing_seed=42, remove_ratio=0.0, n_complete=1, n_calibrate=0):
         self._missing_seed = missing_seed
         self._remove_ratio = remove_ratio
-        self._n_complete = n_complete
+        self._n_complete = n_complete + n_calibrate
         self._data_path = os.path.join(data_path, "{}_{:0.4f}_{}".format(missing_seed, remove_ratio, n_complete))
         self._train_path = os.path.join(self._data_path, "train")
         self._test_path = os.path.join(self._data_path, "test")
@@ -86,6 +86,7 @@ class MonusegDatasetGenerator(DatasetsGenerator):
         self._incomplete_folder = incomplete_folder
         self._complete_folder = complete_folder
         self._tile_size = tile_size
+        self._n_calibrate = n_calibrate
 
         images = ImageInstanceCollection().fetch_with_filter("project", MONUSEG_PROJECT)
         annotations = AnnotationCollection(project=MONUSEG_PROJECT, showWKT=True, showMeta=True).fetch()
@@ -105,9 +106,9 @@ class MonusegDatasetGenerator(DatasetsGenerator):
         return [MemoryCrop(i, m, tile_size=self._tile_size) for i, m in zip(images, masks)]
 
     def sets(self):
-        return self._crops(os.path.join(self._train_path, self._incomplete_folder)), \
-                self._crops(os.path.join(self._train_path, self._complete_folder)), \
-                self._crops(self._test_path)
+        incomplete = self._crops(os.path.join(self._train_path, self._incomplete_folder))
+        complete = self._crops(os.path.join(self._train_path, self._complete_folder))
+        return incomplete, complete[self._n_calibrate:], self._crops(self._test_path), complete[:self._n_calibrate]
 
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)
@@ -124,7 +125,8 @@ class MonusegDatasetGenerator(DatasetsGenerator):
         #     filepath = self._find_by_walk(identifier, os.path.join(self._train_path, self._incomplete_folder, self._image_folder))
         if filepath is None:
             raise ValueError("cannot find file with name '{}'".format(identifier))
-        mask_path = os.path.join(os.path.dirname(os.path.dirname(filepath)), self._mask_folder, identifier.replace(".tif", ".png"))
+        mask_path = os.path.join(os.path.dirname(os.path.dirname(filepath)), self._mask_folder,
+                                 identifier.replace(".tif", ".png"))
         return MemoryCrop(filepath, mask_path, tile_size=self._tile_size)
 
     def _find_by_walk(self, query, dir):
@@ -151,4 +153,5 @@ def main(argv):
 
 if __name__ == "__main__":
     import sys
+
     main(sys.argv[1:])

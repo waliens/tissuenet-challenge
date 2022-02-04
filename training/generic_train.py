@@ -19,7 +19,8 @@ from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
-from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState
+from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState, \
+    CropWithThresholdedCue
 from threshold_optimizer import linear_search, Thresholdable, plot_thresh, thresh_exhaustive_eval
 from monuseg import MonusegDatasetGenerator
 from thyroid import ThyroidDatasetGenerator
@@ -90,6 +91,29 @@ def save_cues(path, crops_with_cues):
         io.imsave(os.path.join(path, crop.crop.annotation.originalFilename), crop.cue)
 
 
+def determine_optimal_threshold(calibration_list, dataset, model, args, device):
+    all_y_pred, all_y_true = np.array([]), np.array([])
+    for calibration_roi in calibration_list:
+        y_pred, y_true = predict_roi(
+            calibration_roi,
+            dataset.val_roi_foreground(calibration_roi),
+            model, device,
+            in_trans=get_norm_transform(),
+            batch_size=args.batch_size,
+            tile_size=args.tile_size,
+            overlap=args.tile_overlap,
+            n_jobs=args.n_jobs,
+            zoom_level=args.zoom_level
+        )
+        all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
+        all_y_true = np.hstack([all_y_true, y_true.flatten()])
+
+    th_opt = Thresholdable(all_y_true, all_y_pred)
+    thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
+    best_idx = np.argmax(dices)
+    return thresholds[best_idx], dices[best_idx]
+
+
 def main(argv):
     """
 
@@ -147,6 +171,8 @@ def main(argv):
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
+        parser.add_argument("-dtm", "--distil_target_mode", dest="distil_target_mode", help="in {'soft', 'hard_dice'}", default="soft")
+        parser.add_argument("--n_calibration", dest="n_calibration", type=int, default=1)
         parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
         print(args)
@@ -207,11 +233,12 @@ def main(argv):
             dataset = MonusegDatasetGenerator(args.data_path, args.tile_size,
                                               missing_seed=args.monuseg_missing_seed,
                                               remove_ratio=args.monuseg_remove_ratio,
-                                              n_complete=args.monuseg_n_complete)
+                                              n_complete=args.monuseg_n_complete,
+                                              n_calibrate=args.n_calibration)
         else:
             raise ValueError("Unknown dataset '{}'".format(args.dataset))
 
-        incomplete_list, complete_list, val_set_list = dataset.sets()
+        incomplete_list, complete_list, val_set_list, calibration_list = dataset.sets()
 
         # gradual more data
         add_data_state = GraduallyAddMoreDataState(
@@ -266,12 +293,13 @@ def main(argv):
 
             epoch_losses = list()
             unet.train()
+            # crop_loc, crop, gt_mask, cue_mask, mask, has_cue
             for i, (x, y_gt, y_cues, y, has_cues) in enumerate(loader):
                 x, y, y_gt, y_cues, has_cues = (t.to(device) for t in [x, y, y_gt, y_cues, has_cues])
                 y_pred = unet.forward(x)
                 if e != 0 and weights_on and torch.any(has_cues):
                     with torch.no_grad():
-                        weights = weight_computer(y_cues.detach(), y_gt.detach())
+                        weights = weight_computer(y_cues.detach(), y_gt.detach(), has_cues)
                     loss = loss_fn(y_pred, y, weights=weights)
                 else:
                     loss = loss_fn(y_pred, y)
@@ -339,6 +367,12 @@ def main(argv):
                     new_crops = predict_annotation_crops_with_cues(
                         unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
                         overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
+                    if args.distil_target_mode == 'hard_dice':
+                        if len(calibration_list) == 0:
+                            raise ValueError("hard_dice requires setting a positive number of calibration images")
+                        calibrated_thresh, calibrated_dice = determine_optimal_threshold(calibration_list, dataset, unet, args, device)
+                        print("> calibrated (thresh, dice): {}, {}".format(calibrated_thresh, calibrated_dice))
+                        new_crops = [CropWithThresholdedCue(crop, calibrated_thresh * 255) for crop in new_crops]
                     if args.save_cues:
                         cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
                         print("save cues for epoch {} at '{}'".format(e, cue_save_path))
@@ -387,7 +421,7 @@ class TrainComputation(Computation):
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
             weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
-            monu_nc=1, iter_per_epoch=0):
+            monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_calibration=0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -427,7 +461,9 @@ class TrainComputation(Computation):
                 "--monu_ms", str(monu_ms),
                 "--monu_nc", str(monu_nc),
                 "--iter_per_epoch", str(iter_per_epoch),
-                "--th_step", str(self._th_step)]
+                "--th_step", str(self._th_step),
+                "--distil_target_mode", str(distil_target_mode),
+                "--n_calibration", str(n_calibration)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:

@@ -396,6 +396,27 @@ class CropWithCue(BaseCrop):
         return self._crop
 
 
+class CropWithThresholdedCue(CropWithCue):
+    def __init__(self, base_crop: CropWithCue, threshold=127, cue_only=False):
+        super().__init__(base_crop.crop, (base_crop.cue >= threshold).astype(np.uint8), cue_only=cue_only)
+        self._base_crop = base_crop
+        self._threshold = threshold
+
+    def random_crop_and_mask(self):
+        crop_loc, crop, gt_mask, _, mask, has_cue = super().random_crop_and_mask()
+        x, y, w, h = crop_loc
+        return crop_loc, crop, gt_mask, Image.fromarray(self.soft_cue[y:y+h, x:x+w], 'L'), mask, has_cue
+
+    def crop_and_mask(self):
+        crop, gt_mask, _, mask, has_cue = super().crop_and_mask()
+        return crop, gt_mask, Image.fromarray(self.soft_cue, 'L'), mask, has_cue
+
+    @property
+    def soft_cue(self):
+        return self._base_crop.cue
+
+
+
 class CropTrainDataset(Dataset):
     def __init__(self, crops, image_trans=None, both_trans=None, mask_trans=None):
         self._crops = crops

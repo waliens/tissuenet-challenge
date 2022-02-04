@@ -31,7 +31,7 @@ class WeightComputer(nn.Module):
         if apply_weights is not None:
             if apply_weights.ndim == 1 and apply_weights.size()[0] != weights.size()[0]:
                 raise ValueError("apply weights vector does not have the correct dimensions {}".format(apply_weights.size()))
-            apply_weights = apply_weights.unsqueeze(1).unsqueeze(1).unsqueeze(1).int()
+            apply_weights = torch.logical_not(apply_weights).unsqueeze(1).unsqueeze(1).unsqueeze(1).int()
             weights = torch.maximum(weights, apply_weights)
         return weights
 

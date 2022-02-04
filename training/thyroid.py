@@ -146,7 +146,7 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
             crop.download()
 
     def sets(self):
-        return self.base_cell_crops, self.pattern_crops, self.val_crops
+        return self.base_cell_crops, self.pattern_crops, self.val_crops, []
 
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)
