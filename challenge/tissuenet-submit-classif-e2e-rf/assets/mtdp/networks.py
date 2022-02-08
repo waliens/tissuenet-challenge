@@ -57,7 +57,7 @@ class MultiHead(nn.Module):
         Parameters
         ----------
         x: torch.Tensor
-            Batch of images.
+            Batch of tensors.
         sources: torch.Tensor
             A vector (same size as the batch) where `sources[i]` is the source index
             for sample `x[i]` of the dataset. Source index should be a unique identifier

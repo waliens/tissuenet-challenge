@@ -1,36 +1,44 @@
 import os
 from argparse import ArgumentParser
-from collections import defaultdict
 from datetime import datetime
 from functools import partial
 from pathlib import Path
 
-import joblib
 import torch
 import numpy as np
 
 from clustertools import Computation
 from clustertools.storage import PickleStorage
 from cytomine import Cytomine
-from cytomine.models import AnnotationCollection, ImageInstance
-from joblib import delayed
-from shapely import wkt
-from shapely.affinity import affine_transform
-from shapely.geometry import box
-from skimage import io
+
 from sklearn import metrics
-from sldc import batch_split
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
-from dataset import RemoteAnnotationCropTrainDataset, predict_roi, AnnotationCrop, predict_annotation_crops_with_cues
-from thyroid import get_thyroid_annotations, get_pattern_train, get_val_set, VAL_TEST_IDS, VAL_IDS, get_cell_train
+from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState, \
+    CropWithThresholdedCue
+from threshold_optimizer import linear_search, Thresholdable, plot_thresh, thresh_exhaustive_eval
+from monuseg import MonusegDatasetGenerator
+from thyroid import ThyroidDatasetGenerator
 from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
 from weight_generator import WeightComputer
+from skimage import io
+
+
+def vstack(*args):
+    if len(args) == 0:
+        return
+    out = args[0]
+    i = 1
+    while out.ndim == 1 and out.shape[0] == 0:
+        out = args[i]
+        i += 1
+    return np.vstack([out, *args[i:]])
+
 
 
 def get_random_init_fn(seed):
@@ -72,45 +80,9 @@ def torange0_1(t):
     return t / 255.0
 
 
-def generic_match_search(key_item, elements, item_fn, match_fn):
-    return [elem for elem in elements if match_fn(key_item, item_fn(elem))]
-
-
-def get_polygons_intersecting_crop_roi(crop, crops):
-    (x, y), width, height = crop.image_box
-    bbox = box(x, y, x + width, y + height)
-    return generic_match_search(bbox, crops,
-                                item_fn=lambda c: c.polygon,
-                                match_fn=lambda a, b: a.intersects(b))
-
-
 def worker_init(tid):
     from PIL import ImageFile
     ImageFile.LOAD_TRUNCATED_IMAGES = False
-
-
-def _parallel_download_wsi(identifiers, path, argv):
-    with Cytomine.connect_from_cli(argv):
-        instances = list()
-        for _id in identifiers:
-            instance = ImageInstance().fetch(_id)
-            filepath = os.path.join(path, instance.originalFilename)
-            print("Download", filepath)
-            instance.download(dest_pattern=filepath, override=False)
-            instance.download_path = filepath
-            instances.append(instance)
-        return instances
-
-
-def download_wsi(path, identifiers, argv, n_jobs=1):
-    batches = batch_split(n_jobs, identifiers)
-    results = joblib.Parallel(n_jobs)(delayed(_parallel_download_wsi)(batch, path, argv) for batch in batches)
-    return [i for b in results for i in b]
-
-
-def polyref_proc2cyto(p, height_at_zoom_level, zoom_level=0):
-    p = affine_transform(p, [1, 0, 0, -1, 0, height_at_zoom_level])
-    return affine_transform(p, [2 ** zoom_level, 0, 0, 2 ** zoom_level, 0, 0])
 
 
 def save_cues(path, crops_with_cues):
@@ -119,41 +91,27 @@ def save_cues(path, crops_with_cues):
         io.imsave(os.path.join(path, crop.crop.annotation.originalFilename), crop.cue)
 
 
-def group_annot_per_image(annots):
-    dd = defaultdict(list)
-    for a in annots:
-        dd[a.image].append(a)
-    return dd
+def determine_optimal_threshold(calibration_list, dataset, model, args, device):
+    all_y_pred, all_y_true = np.array([]), np.array([])
+    for calibration_roi in calibration_list:
+        y_pred, y_true = predict_roi(
+            calibration_roi,
+            dataset.val_roi_foreground(calibration_roi),
+            model, device,
+            in_trans=get_norm_transform(),
+            batch_size=args.batch_size,
+            tile_size=args.tile_size,
+            overlap=args.tile_overlap,
+            n_jobs=args.n_jobs,
+            zoom_level=args.zoom_level
+        )
+        all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
+        all_y_true = np.hstack([all_y_true, y_true.flatten()])
 
-class GraduallyAddMoreDataState(object):
-    def __init__(self, sparse, non_sparse, data_rate=1.0, data_max=1.0):
-        self._data_rate = data_rate
-        self._data_max = data_max
-        self._sparse = sparse
-        self._non_sparse = non_sparse
-        self._current_amount = 0
-
-    @property
-    def abs_data_max(self):
-        if self._data_max < 0:
-            return min(len(self._non_sparse), len(self._sparse))
-        elif 0 <= self._data_max <= 1:
-            return int(self._data_max * len(self._sparse))
-        else:
-            return min(int(self._data_max), len(self._sparse))
-
-    @property
-    def abs_date_to_add(self):
-        if 0 <= self._data_rate <= 1:
-            return int(self._data_rate * len(self._sparse))
-        elif self._data_rate > 1:
-            return int(self._data_max)
-
-    def get_next(self):
-        self._current_amount += self.abs_date_to_add
-        self._current_amount = min(self._current_amount, self.abs_data_max)
-        return self._sparse[:self._current_amount]
-
+    th_opt = Thresholdable(all_y_true, all_y_pred)
+    thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
+    best_idx = np.argmax(dices)
+    return thresholds[best_idx], dices[best_idx]
 
 
 def main(argv):
@@ -181,9 +139,15 @@ def main(argv):
         parser.add_argument("-z", "--zoom_level", dest="zoom_level", default=0, type=int)
         parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
         parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
+        parser.add_argument("-i", "--iter_per_epoch", dest="iter_per_epoch", default=0, type=int)
+        parser.add_argument("--dataset", dest="dataset", default="thyroid", help="in ['thyroid', 'monuseg', 'pannuke']")
+        parser.add_argument("--monu_rr", dest="monuseg_remove_ratio", default=0.0, type=float)
+        parser.add_argument("--monu_ms", dest="monuseg_missing_seed", default=42, type=int)
+        parser.add_argument("--monu_nc", dest="monuseg_n_complete", default=1, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--save_cues", dest="save_cues", action="store_true")
+        parser.add_argument("--th_step", dest="th_step", default=0.01, type=float)
         parser.add_argument("--sparse_start_after", dest="sparse_start_after", default=0, type=int)
         parser.add_argument("--aug_hed_bias_range", dest="aug_hed_bias_range", type=float, default=0.025)
         parser.add_argument("--aug_hed_coef_range", dest="aug_hed_coef_range", type=float, default=0.025)
@@ -207,6 +171,8 @@ def main(argv):
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
+        parser.add_argument("-dtm", "--distil_target_mode", dest="distil_target_mode", help="in {'soft', 'hard_dice'}", default="soft")
+        parser.add_argument("--n_calibration", dest="n_calibration", type=int, default=1)
         parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
         print(args)
@@ -222,56 +188,6 @@ def main(argv):
         os.makedirs(args.save_path, exist_ok=True)
         os.makedirs(args.data_path, exist_ok=True)
         os.makedirs(args.working_path, exist_ok=True)
-
-        # fetch annotations (filter val/test sets + other annotations)
-        all_annotations = get_thyroid_annotations()
-        pattern_collec = get_pattern_train(all_annotations)
-        cell_collec = get_cell_train(all_annotations)
-        train_collec = pattern_collec + cell_collec
-        val_rois, val_foreground = get_val_set(all_annotations)
-        train_wsi_ids = list({an.image for an in all_annotations}.difference(VAL_TEST_IDS))
-        val_wsi_ids = list(VAL_IDS)
-
-        download_path = os.path.join(args.data_path, "crops-{}".format(args.tile_size))
-        images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
-
-        print("find crops intersecting ROIs")
-        match_params = {
-            "item_fn": lambda a: wkt.loads(a.location),
-            "match_fn": lambda a, b: a.intersects(b)
-        }
-        print("base cell crops... ", end="", flush=True)
-        annots_per_image = group_annot_per_image(train_collec)
-        intersecting = {
-            annot.id: generic_match_search(
-                key_item=box(*wkt.loads(annot.location).bounds),
-                elements=annots_per_image[annot.image],
-                **match_params)
-            for annot in train_collec
-        }
-        print("done")
-        print("validation rois... ", end="", flush=True)
-        val_rois_to_intersect = {
-            roi.id: generic_match_search(
-                key_item=wkt.loads(roi.location),
-                elements=[a for a in val_foreground if a.image == roi.image],
-                **match_params)
-            for roi in val_rois
-        }
-        print("done")
-
-        pattern_crops = [AnnotationCrop(
-            images[annot.image], annot, download_path, args.tile_size,
-            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in pattern_collec]
-        base_cell_crops = [AnnotationCrop(
-            images[annot.image], annot, download_path, args.tile_size,
-            zoom_level=args.zoom_level, intersecting=intersecting[annot.id]) for annot in cell_collec]
-        val_crops = [AnnotationCrop(
-            images[annot.image], annot, download_path, args.tile_size,
-            zoom_level=args.zoom_level) for annot in val_rois]
-
-        for crop in pattern_crops + base_cell_crops + val_crops:
-            crop.download()
 
         # network
         device = torch.device(args.device)
@@ -298,14 +214,6 @@ def main(argv):
             "both": MergedLoss(BCEWithLogitsLoss(reduction="mean"), DiceWithLogitsLoss(reduction="mean"))
         }.get(args.loss, BCEWithWeights(reduction="mean"))
 
-        results = {
-            "train_losses": [],
-            "val_losses": [],
-            "val_dice": [],
-            "val_metrics": [],
-            "save_path": []
-        }
-
         struct, visual = get_aug_transforms(
             aug_hed_bias_range=args.aug_hed_bias_range,
             aug_hed_coef_range=args.aug_hed_coef_range,
@@ -319,43 +227,79 @@ def main(argv):
             "mask_trans": transforms.ToTensor()
         }
 
+        if args.dataset == "thyroid":
+            dataset = ThyroidDatasetGenerator(args.data_path, args.tile_size, args.zoom_level)
+        elif args.dataset == "monuseg":
+            dataset = MonusegDatasetGenerator(args.data_path, args.tile_size,
+                                              missing_seed=args.monuseg_missing_seed,
+                                              remove_ratio=args.monuseg_remove_ratio,
+                                              n_complete=args.monuseg_n_complete,
+                                              n_calibrate=args.n_calibration)
+        else:
+            raise ValueError("Unknown dataset '{}'".format(args.dataset))
+
+        incomplete_list, complete_list, val_set_list, calibration_list = dataset.sets()
+
         # gradual more data
         add_data_state = GraduallyAddMoreDataState(
-            base_cell_crops, pattern_crops,
+            incomplete_list, complete_list,
             data_rate=args.sparse_data_rate,
             data_max=args.sparse_data_max)
 
-        full_dataset = RemoteAnnotationCropTrainDataset(pattern_crops, **trans_dict)
+        complete = dataset.iterable_to_dataset(complete_list, **trans_dict)
         if args.sparse_start_after >= 0:
-            sparse_dataset = RemoteAnnotationCropTrainDataset([], **trans_dict)
+            incomplete = CropTrainDataset([], **trans_dict)
         else:
-            sparse_dataset = RemoteAnnotationCropTrainDataset(add_data_state.get_next(), **trans_dict)
+            incomplete = dataset.iterable_to_dataset(add_data_state.get_next(), **trans_dict)
+        loader_args = {
+            "shuffle": True,
+            "batch_size": args.batch_size,
+            "num_workers": args.n_jobs,
+            "worker_init_fn": worker_init,
+            "pin_memory": True
+        }
+        if args.iter_per_epoch > 0:
+            loader_args["shuffle"] = False
+            sampler_fn = lambda ds: RandomSampler(ds, replacement=True, num_samples=args.iter_per_epoch * args.batch_size)
+        else:
+            sampler_fn = lambda ds: None
 
         print("Dataset")
         print("Size: ")
-        print("- complete   : {}".format(len(pattern_crops)))
-        print("- sparse     : {}".format(len(base_cell_crops)))
-        print("- both (bef) : {}".format(len(full_dataset)))
+        print("- complete   : {}".format(len(complete_list)))
+        print("- sparse     : {}".format(len(incomplete_list)))
+        print("- both (bef) : {}".format(len(complete_list) + len(incomplete_list)))
         print("- start (improved) sparse after epoch {}".format(args.sparse_start_after))
+
+        results = {
+            "train_losses": [],
+            "val_losses": [],
+            "val_dice": [],
+            "val_soft_dice": [],
+            "val_metrics": [],
+            "save_path": [],
+            "thresholds": [],
+            "threshold": []
+        }
 
         for e in range(args.epochs):
             print("########################")
             print("        Epoch {}".format(e))
             print("########################")
 
-            concat_dataset = ConcatDataset([sparse_dataset, full_dataset])
+            concat_dataset = ConcatDataset([complete, incomplete])
             print("Training dataset size: {}".format(len(concat_dataset)))
-            loader = DataLoader(concat_dataset, shuffle=True, batch_size=args.batch_size,
-                                num_workers=args.n_jobs, worker_init_fn=worker_init)
+            loader = DataLoader(concat_dataset, sampler=sampler_fn(concat_dataset), **loader_args)
 
             epoch_losses = list()
             unet.train()
-            for i, (x, y_gt, y, has_cues) in enumerate(loader):
-                x, y, y_gt, has_cues = (t.to(device) for t in [x, y, y_gt, has_cues])
+            # crop_loc, crop, gt_mask, cue_mask, mask, has_cue
+            for i, (x, y_gt, y_cues, y, has_cues) in enumerate(loader):
+                x, y, y_gt, y_cues, has_cues = (t.to(device) for t in [x, y, y_gt, y_cues, has_cues])
                 y_pred = unet.forward(x)
                 if e != 0 and weights_on and torch.any(has_cues):
                     with torch.no_grad():
-                        weights = weight_computer(y_pred.detach(), y_gt.detach())
+                        weights = weight_computer(y_cues.detach(), y_gt.detach(), has_cues)
                     loss = loss_fn(y_pred, y, weights=weights)
                 else:
                     loss = loss_fn(y_pred, y)
@@ -368,18 +312,18 @@ def main(argv):
 
             unet.eval()
             # validation
-            val_losses = np.zeros(len(val_rois), dtype=np.float)
-            val_roc_auc = np.zeros(len(val_rois), dtype=np.float)
-            val_dice = np.zeros(len(val_rois), dtype=np.float)
-            val_cm = np.zeros([len(val_rois), 2, 2], dtype=np.int)
+            val_losses = np.zeros(len(val_set_list), dtype=np.float)
+            val_roc_auc = np.zeros(len(val_set_list), dtype=np.float)
+            val_dice = np.zeros(len(val_set_list), dtype=np.float)
 
             print("------------------------------")
             print("Eval at epoch {}:".format(e))
 
-            for i, roi in enumerate(val_crops):
+            all_y_pred, all_y_true = np.array([]), np.array([])
+            for i, roi in enumerate(val_set_list):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        roi, val_rois_to_intersect[roi.annotation.id], unet, device,
+                        roi, dataset.val_roi_foreground(roi), unet, device,
                         in_trans=get_norm_transform(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,
@@ -388,31 +332,47 @@ def main(argv):
                         zoom_level=args.zoom_level
                     )
 
+                all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
+                all_y_true = np.hstack([all_y_true, y_true.flatten()])
+
                 val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
                 val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
                 val_dice[i] = soft_dice_coefficient(y_true, y_pred)
-                val_cm[i] = metrics.confusion_matrix(y_true.flatten().astype(np.uint8), (y_pred.flatten() > 0.5).astype(np.uint8))
 
             val_loss = np.mean(val_losses)
             roc_auc = np.mean(val_roc_auc)
-            dice = np.mean(val_dice)
-            print("> val_loss: {:1.5f}".format(val_loss))
-            print("> roc_auc : {:1.5f}".format(roc_auc))
-            print("> dice    : {:1.5f}".format(dice))
-            cm = np.sum(val_cm, axis=0)
-            cnt = np.sum(val_cm)
-            print("CM at 0.5 threshold")
+
+            th_opt = Thresholdable(all_y_true, all_y_pred)
+            thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
+            results["thresholds"].append((thresholds, dices))
+            best_idx = np.argmax(dices)
+            threshold, dice = thresholds[best_idx], dices[best_idx]
+            cm = metrics.confusion_matrix(all_y_true.astype(np.uint8), (all_y_pred.flatten() > threshold).astype(np.uint8))
+            del all_y_pred, all_y_true
+            cnt = np.sum(cm)
+            soft_dice = np.mean(val_dice)
+            print("> val_loss : {:1.5f}".format(val_loss))
+            print("> roc_auc  : {:1.5f}".format(roc_auc))
+            print("> dice     : {:1.5f}".format(dice))
+            print("> soft dice: {:1.5f}".format(soft_dice))
+            print("CM at {:0.4f} threshold".format(threshold))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
             print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
             if args.sparse_start_after <= e:
                 if args.no_distillation:
-                    sparse_dataset = RemoteAnnotationCropTrainDataset(add_data_state.get_next(), **trans_dict)
+                    incomplete = dataset.iterable_to_dataset(add_data_state.get_next(), **trans_dict)
                 else:
                     print("------------------------------")
                     print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
                     new_crops = predict_annotation_crops_with_cues(
                         unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
                         overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
+                    if args.distil_target_mode == 'hard_dice':
+                        if len(calibration_list) == 0:
+                            raise ValueError("hard_dice requires setting a positive number of calibration images")
+                        calibrated_thresh, calibrated_dice = determine_optimal_threshold(calibration_list, dataset, unet, args, device)
+                        print("> calibrated (thresh, dice): {}, {}".format(calibrated_thresh, calibrated_dice))
+                        new_crops = [CropWithThresholdedCue(crop, calibrated_thresh * 255) for crop in new_crops]
                     if args.save_cues:
                         cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
                         print("save cues for epoch {} at '{}'".format(e, cue_save_path))
@@ -420,7 +380,7 @@ def main(argv):
                     if args.no_groundtruth:
                         for awcue in new_crops:
                             awcue.cue_only = True
-                    sparse_dataset = RemoteAnnotationCropTrainDataset(new_crops, **trans_dict)
+                    incomplete = dataset.iterable_to_dataset(new_crops, **trans_dict)
                     print("------------------------------")
 
             # reset scheduler when adding new samples
@@ -434,15 +394,17 @@ def main(argv):
 
             results["val_losses"].append(val_loss)
             results["val_dice"].append(dice)
+            results["val_soft_dice"].append(soft_dice)
             results["val_metrics"].append(roc_auc)
             results["save_path"].append(filename)
+            results["threshold"].append(threshold)
 
         return results
 
 
 class TrainComputation(Computation):
     def __init__(self, exp_name, comp_name, host=None, private_key=None, public_key=None, n_jobs=1, device="cuda:0",
-                 save_path=None, data_path=None, context="n/a", storage_factory=PickleStorage, **kwargs):
+                 save_path=None, data_path=None, th_step=0.01, context="n/a", storage_factory=PickleStorage, **kwargs):
         super().__init__(exp_name, comp_name, context=context, storage_factory=storage_factory)
         self._n_jobs = n_jobs
         self._device = device
@@ -451,13 +413,15 @@ class TrainComputation(Computation):
         self._cytomine_public_key = public_key
         self._cytomine_host = host
         self._data_path = data_path
+        self._th_step = th_step
 
     def run(self, results, batch_size=4, epochs=4, overlap=0, tile_size=512, lr=.001, init_fmaps=16, zoom_level=0,
             sparse_start_after=0, aug_hed_bias_range=0.025, aug_hed_coef_range=0.025, aug_blur_sigma_extent=0.1,
             aug_noise_var_extent=0.1, save_cues=False, loss="bce", lr_sched_factor=0.5, lr_sched_patience=3,
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
-            weights_neighbourhood=1, rseed=42, weights_minimum=0.0):
+            weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
+            monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_calibration=0):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -491,7 +455,15 @@ class TrainComputation(Computation):
                 "--weights_constant", str(weights_constant),
                 "--weights_consistency_fn", str(weights_consistency_fn),
                 "--weights_neighbourhood", str(weights_neighbourhood),
-                "--weights_minimum", str(weights_minimum)]
+                "--weights_minimum", str(weights_minimum),
+                "--dataset", str(dataset),
+                "--monu_rr", str(monu_rr),
+                "--monu_ms", str(monu_ms),
+                "--monu_nc", str(monu_nc),
+                "--iter_per_epoch", str(iter_per_epoch),
+                "--th_step", str(self._th_step),
+                "--distil_target_mode", str(distil_target_mode),
+                "--n_calibration", str(n_calibration)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:

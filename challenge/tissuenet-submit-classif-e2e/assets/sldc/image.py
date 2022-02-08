@@ -71,8 +71,8 @@ class Image(object):
 
         Notes
         -----
-        When working with very big images, this method may be "disabled" (i.e. raise NotImplementedError) to prevent
-        user of the class to fully load them into memory. Tiles should be used instead to explore large images.
+        When working with very big tensors, this method may be "disabled" (i.e. raise NotImplementedError) to prevent
+        user of the class to fully load them into memory. Tiles should be used instead to explore large tensors.
         """
         pass
 
@@ -466,7 +466,7 @@ class ImageWindow(Image):
 
 class Tile(ImageWindow):
     """Abstract representation of an image's tile. A tile is a "small" window of an image.
-    This class should be used along with a TileTopology to explore huge images.
+    This class should be used along with a TileTopology to explore huge tensors.
 
     Notes
     -----

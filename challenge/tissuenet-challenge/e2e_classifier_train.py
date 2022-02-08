@@ -26,7 +26,7 @@ from svm_classifier_train import Rescale, group_per_slide, PathDataset, compute_
 
 
 def elastic_transform(image, alpha, sigma, random_state=None):
-    """Elastic deformation of images as described in [Simard2003]_.
+    """Elastic deformation of tensors as described in [Simard2003]_.
     .. [Simard2003] Simard, Steinkraus and Platt, "Best Practices for
        Convolutional Neural Networks applied to Visual Document Analysis", in
        Proc. of the International Conference on Document Analysis and

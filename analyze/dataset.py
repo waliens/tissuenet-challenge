@@ -61,54 +61,17 @@ def convert_poly(p, zoom, im_height):
     return affine_transform(polygon, [1, 0, 0, -1, 0, im_height])
 
 
-class BaseCrop(object):
+class BaseAnnotationCrop(object):
     @abstractmethod
     def random_crop_and_mask(self):
-        """
-        if has_cue is False, gt_mask and cue_mask are equal to mask.
-        crop_loc, crop, gt_mask, cue_mask, mask, has_cue
-        """
         pass
 
     @abstractmethod
     def crop_and_mask(self):
-        """
-        if has_cue is False, gt_mask and cue_mask are equal to mask.
-        crop, gt_mask, cue_mask, mask, has_cue
-        """
-        pass
-
-    @abstractmethod
-    def topology(self, width, height, overlap=0):
-        return
-
-    @property
-    @abstractmethod
-    def width(self):
-        pass
-
-    @property
-    @abstractmethod
-    def height(self):
-        pass
-
-    @property
-    @abstractmethod
-    def offset(self):
-        pass
-
-    @property
-    @abstractmethod
-    def tile_size(self):
-        pass
-
-    @property
-    @abstractmethod
-    def unique_identifier(self):
         pass
 
 
-class AnnotationCrop(BaseCrop):
+class AnnotationCrop(BaseAnnotationCrop):
     def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0, intersecting=None):
         self._annotation = annotation
         self._tile_size = tile_size
@@ -143,22 +106,6 @@ class AnnotationCrop(BaseCrop):
     def image_box(self):
         return self._extract_image_box()
 
-    @property
-    def width(self):
-        return self._extract_image_box()[1]
-
-    @property
-    def height(self):
-        return self._extract_image_box()[2]
-
-    @property
-    def offset(self):
-        return self._extract_image_box()[0]
-
-    @property
-    def unique_identifier(self):
-        return str(self._annotation.id)
-
     def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
         start = crop_start
         size = crop_size
@@ -181,9 +128,7 @@ class AnnotationCrop(BaseCrop):
 
     def _get_image_filepath(self):
         (x, y), width, height = self._extract_image_box()
-        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(self._zoom_level,
-                                                                                self.image_instance.id, x, y, width,
-                                                                                height)
+        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(self._zoom_level, self.image_instance.id, x, y, width, height)
 
     def _download_image(self):
         filepath = self._get_image_filepath()
@@ -248,16 +193,14 @@ class AnnotationCrop(BaseCrop):
         y = np.random.randint(0, height - self._tile_size + 1)
         crop = self._robust_load_crop(x, y)
         mask = self._mask(x, y, self._tile_size, self._tile_size)
-        pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return (x, y, self._tile_size, self._tile_size), crop, pil_mask, pil_mask, pil_mask, False
+        return (x, y, self._tile_size, self._tile_size), crop, Image.fromarray(mask.astype(np.uint8))
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
         _, width, height = self._extract_image_box()
         image = self._robust_load_image()
         mask = self._mask(0, 0, width, height)
-        pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return image, pil_mask, pil_mask, pil_mask, False
+        return image, Image.fromarray(mask.astype(np.uint8))
 
     def _mask(self, window_x, window_y, window_width, window_height):
         (crop_x, crop_y), crop_width, crop_height = self.image_box
@@ -287,8 +230,7 @@ class AnnotationCrop(BaseCrop):
         return self._wsi.window((xmin, ymin), width, height)
 
     def topology(self, width, height, overlap=0):
-        base_topology = TileTopology(self.sldc_image, tile_builder=self.tile_builder, max_width=width,
-                                     max_height=height, overlap=overlap)
+        base_topology = TileTopology(self.sldc_image, tile_builder=self.tile_builder, max_width=width, max_height=height, overlap=overlap)
         return FixedSizeTileTopology(base_topology)
 
     @property
@@ -296,96 +238,30 @@ class AnnotationCrop(BaseCrop):
         return DefaultTileBuilder()
 
 
-class MemoryCrop(BaseCrop):
-    def __init__(self, img_path, mask_path, tile_size=256):
-        self._img_path = img_path
-        self._mask_path = mask_path
-        self._image = Image.open(self._img_path)
-        self._image.load()
-        self._mask = Image.open(self._mask_path)
-        self._mask.load()
-        self._tile_size = tile_size
-
-    @property
-    def unique_identifier(self):
-        return os.path.basename(self._img_path)
-
-    @property
-    def tile_size(self):
-        return self._tile_size
-
-    @property
-    def img_path(self):
-        return self._img_path
-
-    @property
-    def width(self):
-        return self._image.width
-
-    @property
-    def height(self):
-        return self._image.height
-
-    @property
-    def offset(self):
-        return 0, 0
-
-    def crop_and_mask(self):
-        return self._image, self._mask, self._mask, self._mask, False
-
-    def random_crop_and_mask(self):
-        width, height = self._image.width, self._image.height
-        x = np.random.randint(0, width - self._tile_size + 1)
-        y = np.random.randint(0, height - self._tile_size + 1)
-        img_crop = self._image.crop([x, y, x + self._tile_size, y + self._tile_size])
-        mask_crop = self._mask.crop([x, y, x + self._tile_size, y + self._tile_size])
-        return (x, y, self._tile_size, self._tile_size), img_crop, mask_crop, mask_crop, mask_crop, False
-
-    def topology(self, width, height, overlap=0):
-        base = TileTopology(PilImage(self._img_path), tile_builder=DefaultTileBuilder(),
-                            max_width=width, max_height=height, overlap=0)
-        return FixedSizeTileTopology(base)
-
-
-class CropWithCue(BaseCrop):
-    def __init__(self, crop: BaseCrop, cue, cue_only=False):
+class AnnotationCropWithCue(BaseAnnotationCrop):
+    def __init__(self, crop: BaseAnnotationCrop, cue):
         """
         Parameters
         ----------
-        crop: BaseCrop
+        crop: BaseAnnotationCrop
         cue: ndarray
             Probability map for the cue np.array of float in [0, 1]
         """
         self._crop = crop
         self._cue = (cue * 255)
-        self._cue_only = cue_only
-
-    @property
-    def cue_only(self):
-        return self._cue_only
-
-    @cue_only.setter
-    def cue_only(self, value):
-        self._cue_only = value
 
     def random_crop_and_mask(self):
-        crop_location, crop, mask, _, _, _ = self._crop.random_crop_and_mask()
+        crop_location, crop, mask = self._crop.random_crop_and_mask()
         x, y, w, h = crop_location
-        final_mask = self._cue[y:(y + h), x:(x + w)]
-        if not self.cue_only:
-            final_mask[np.asarray(mask) > 0] = 255
-        return (crop_location,
-                crop,
-                mask,
-                Image.fromarray(self._cue[y:(y + h), x:(x + w)], "L"),
-                Image.fromarray(final_mask.astype(np.uint8), "L"),
-                True)
+        final_mask = self._cue[y:(y+h), x:(x+w)]
+        final_mask[np.asarray(mask) > 0] = 255
+        return crop_location, crop, Image.fromarray(final_mask.astype(np.uint8), "L")
 
     def crop_and_mask(self):
-        crop, mask, _, _, _ = self._crop.crop_and_mask()
-        final_mask = np.copy(self._cue)
+        crop, mask = self._crop.crop_and_mask()
+        final_mask = self._cue
         final_mask[np.asarray(mask) > 0] = 255
-        return crop, mask, Image.fromarray(self._cue, "L"), Image.fromarray(final_mask), True
+        return crop, Image.fromarray(final_mask)
 
     @property
     def cue(self):
@@ -396,28 +272,7 @@ class CropWithCue(BaseCrop):
         return self._crop
 
 
-class CropWithThresholdedCue(CropWithCue):
-    def __init__(self, base_crop: CropWithCue, threshold=127, cue_only=False):
-        super().__init__(base_crop.crop, (base_crop.cue >= threshold).astype(np.uint8), cue_only=cue_only)
-        self._base_crop = base_crop
-        self._threshold = threshold
-
-    def random_crop_and_mask(self):
-        crop_loc, crop, gt_mask, _, mask, has_cue = super().random_crop_and_mask()
-        x, y, w, h = crop_loc
-        return crop_loc, crop, gt_mask, Image.fromarray(self.soft_cue[y:y+h, x:x+w], 'L'), mask, has_cue
-
-    def crop_and_mask(self):
-        crop, gt_mask, _, mask, has_cue = super().crop_and_mask()
-        return crop, gt_mask, Image.fromarray(self.soft_cue, 'L'), mask, has_cue
-
-    @property
-    def soft_cue(self):
-        return self._base_crop.cue
-
-
-
-class CropTrainDataset(Dataset):
+class RemoteAnnotationCropTrainDataset(Dataset):
     def __init__(self, crops, image_trans=None, both_trans=None, mask_trans=None):
         self._crops = crops
         self._both_trans = both_trans
@@ -425,19 +280,17 @@ class CropTrainDataset(Dataset):
         self._mask_trans = mask_trans
 
     def __getitem__(self, item):
-        crop = self._crops[item]
-        _, image, gt_mask, cue_mask, mask, has_cue = crop.random_crop_and_mask()
+        annotation_crop = self._crops[item]
+        _, image, mask = annotation_crop.random_crop_and_mask()
 
         if self._both_trans is not None:
-            image, gt_mask, mask, cue_mask = self._both_trans([image, gt_mask, mask, cue_mask])
+            image, mask = self._both_trans([image, mask])
         if self._image_trans is not None:
             image = self._image_trans(image)
         if self._mask_trans is not None:
             mask = self._mask_trans(mask)
-            gt_mask = self._mask_trans(gt_mask)
-            cue_mask = self._mask_trans(cue_mask)
 
-        return image, gt_mask, cue_mask, mask, has_cue
+        return image, mask
 
     def __len__(self):
         return len(self._crops)
@@ -466,12 +319,11 @@ class TileTopologyDataset(Dataset):
         return len(self._topology)
 
 
-def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, tile_size=256, overlap=0, n_jobs=1,
-                zoom_level=0):
+def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, tile_size=256, overlap=0, n_jobs=1, zoom_level=0):
     """
     Parameters
     ----------
-    roi: BaseCrop
+    roi: AnnotationCrop
         The polygon representing the roi to process
     ground_truth: iterable of Annotation|Polygon
         The ground truth annotations
@@ -497,13 +349,13 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     """
     # topology
     tile_topology = roi.topology(width=tile_size, height=tile_size, overlap=overlap)
-    (x_min, y_min), width, height = roi.offset, roi.width, roi.height
+    (x_min, y_min), width, height = roi.image_box
     mask_dims = (height, width)
 
     # build ground truth
-    roi_poly = box(x_min, y_min, x_min + width, y_min + height)
+    roi_poly = roi.polygon
     ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
-    ground_truth = [convert_poly(g, zoom_level, roi.height) for g in ground_truth]
+    ground_truth = [convert_poly(g, zoom_level, roi.wsi.height) for g in ground_truth]
     translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
 
     y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
@@ -547,10 +399,9 @@ def get_sample_indexes(index, cumsum):
     return dataset_index, relative_index
 
 
-class CropTopoplogyDataset(Dataset):
+class AnnotationCropTopoplogyDataset(Dataset):
     def __init__(self, crop, overlap=0, in_trans=None):
-        self._dataset = TileTopologyDataset(crop.topology(crop.tile_size, crop.tile_size, overlap=overlap),
-                                            trans=in_trans)
+        self._dataset = TileTopologyDataset(crop.topology(crop.tile_size, crop.tile_size, overlap=overlap), trans=in_trans)
         self._crop = crop
 
     def __getitem__(self, item):
@@ -574,21 +425,21 @@ class MultiCropsSet(Dataset):
         """
         super().__init__()
         self._datasets = [
-            CropTopoplogyDataset(crop, overlap=overlap, in_trans=in_trans)
+            AnnotationCropTopoplogyDataset(crop, overlap=overlap, in_trans=in_trans)
             for crop in crops]
         self._sizes, self._cumsum_sizes = datasets_size_cumsum(self._datasets)
 
     def __getitem__(self, index):
         dataset_index, relative_index = get_sample_indexes(index, self._cumsum_sizes)
         dataset = self._datasets[dataset_index]
-        return (dataset._crop.unique_identifier,) + dataset[relative_index]
+        return (dataset._crop.annotation.id,) + dataset[relative_index]
 
     def __len__(self):
         return self._cumsum_sizes[-1] + len(self._datasets[-1])
 
 
 def sizeof_fmt(num, suffix='B'):
-    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
@@ -597,7 +448,7 @@ def sizeof_fmt(num, suffix='B'):
 
 def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1):
     if len(crops) == 0:
-        return list()
+        return 0
     dataset = MultiCropsSet(crops, in_trans=in_trans, overlap=overlap)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
                         num_workers=n_jobs, pin_memory=True, drop_last=False)
@@ -612,73 +463,18 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         y = torch.sigmoid(net.forward(t))
         detached = y.detach().cpu().numpy()
         for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
-            all_ys[annot_id].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
+            all_ys[annot_id.item()].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
 
     awcues = list()
     for crop in crops:
-        w, h = crop.width, crop.height
+        _, w, h = crop.image_box
         cue = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
-        for tile_id, (x_off, y_off), y_pred in all_ys[crop.unique_identifier]:
+        for tile_id, (x_off, y_off), y_pred in all_ys[crop.annotation.id]:
             cue[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
             acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
         cue /= acc
-        awcues.append(CropWithCue(crop, cue=cue))
-        del (all_ys[crop.unique_identifier])
+        awcues.append(AnnotationCropWithCue(crop, cue=cue))
+        del(all_ys[crop.annotation.id])
 
     return awcues
-
-
-class DatasetsGenerator(object):
-    @abstractmethod
-    def sets(self):
-        """
-        Returns
-        -------
-        incomplete: iterable of BaseCrop
-        complete: iterable of BaseCrop
-        val_set: iterable of BaseCrop
-        """
-        pass
-
-    @abstractmethod
-    def iterable_to_dataset(self, iterable, **kwargs):
-        pass
-
-    @abstractmethod
-    def val_roi_foreground(self, val_roi):
-        pass
-
-    @abstractmethod
-    def crop(self, identifier):
-        pass
-
-
-class GraduallyAddMoreDataState(object):
-    def __init__(self, sparse, non_sparse, data_rate=1.0, data_max=1.0):
-        self._data_rate = data_rate
-        self._data_max = data_max
-        self._sparse = sparse
-        self._non_sparse = non_sparse
-        self._current_amount = 0
-
-    @property
-    def abs_data_max(self):
-        if self._data_max < 0:
-            return min(len(self._non_sparse), len(self._sparse))
-        elif 0 <= self._data_max <= 1:
-            return int(self._data_max * len(self._sparse))
-        else:
-            return min(int(self._data_max), len(self._sparse))
-
-    @property
-    def abs_date_to_add(self):
-        if 0 <= self._data_rate <= 1:
-            return int(self._data_rate * len(self._sparse))
-        elif self._data_rate > 1:
-            return int(self._data_max)
-
-    def get_next(self):
-        self._current_amount += self.abs_date_to_add
-        self._current_amount = min(self._current_amount, self.abs_data_max)
-        return self._sparse[:self._current_amount]

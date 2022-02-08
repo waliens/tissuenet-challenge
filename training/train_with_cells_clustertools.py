@@ -12,6 +12,7 @@ def env_parser():
     parser.add_argument("--data_path", "--data_path", dest="data_path")
     parser.add_argument("--device", dest="device", default="cuda:0")
     parser.add_argument("--n_jobs", dest="n_jobs", default=1, type=int)
+    parser.add_argument("--th_step", dest="th_step", default=0.01, type=float)
     _ = Cytomine._add_cytomine_cli_args(parser.parser)
     return parser
 
@@ -41,7 +42,7 @@ def weight_exclude(**kwargs):
                 (kwargs.get("weights_consistency_fn") == "absolute" and kwargs.get("weights_neighbourhood") == 1)) \
         and (kwargs.get("loss") == "bce" or (constant_and_is_one and min_weight_is_zero)) \
         and (kwargs.get("sparse_start_after") < 50 or (constant_and_is_one and min_weight_is_zero)) \
-        and (kwargs.get("weights_mode") not in {"constant", "gt_balance"} or min_weight_is_zero)
+        and (kwargs.get("weights_mode") not in {"constant", "balance_gt"} or min_weight_is_zero)
 
 
 if __name__ == "__main__":
@@ -93,7 +94,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("thyroid-unet-training-weights", constrained, make_build_fn(**env_params))
+    experiment = Experiment("thyroid-unet-training-weights-debug", constrained, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)

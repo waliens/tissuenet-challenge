@@ -37,7 +37,7 @@ class TimingContextManager(object):
 
 
 def check_tile_poly_intersection(tile, polygon):
-    """A slide + a polygon : only provide images of tiles that intersects with the polygon."""
+    """A slide + a polygon : only provide tensors of tiles that intersects with the polygon."""
     x, y = tile.abs_offset
     b = box(x, y, x + tile.width, y + tile.height)
     return b.intersects(polygon)
