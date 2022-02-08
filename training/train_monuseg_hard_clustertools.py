@@ -30,17 +30,32 @@ def weight_exclude(**kwargs):
     # > wmin=0 if wmode=const or balanced
     # > wmin>0 if wmode includes entropy
     return (wmode_is_constant or wconstant_is_one) \
-        and not constant_and_is_one \
-        and (kwargs.get("weights_mode") in {"pred_consistency", "pred_merged"} or
-                (kwargs.get("weights_consistency_fn") == "quadratic" and kwargs.get("weights_neighbourhood") == 2)) \
-        and (kwargs.get("weights_mode") not in {"constant", "balance_gt"} or min_weight_is_zero) \
-        and (kwargs.get("weights_mode") not in {"pred_entropy", "pred_merged"} or kwargs.get("weights_minimum") > 0.01)
+       and (kwargs.get("weights_mode") in {"pred_consistency", "pred_merged"} or
+            (kwargs.get("weights_consistency_fn") == "quadratic" and kwargs.get("weights_neighbourhood") == 2)) \
+       and (kwargs.get("weights_mode") not in {"constant", "balance_gt"} or min_weight_is_zero) \
+       and (kwargs.get("weights_mode") not in {"pred_entropy", "pred_merged"} or not min_weight_is_zero)
 
 
 def exclude_target_and_dice_calibration(**kwargs):
     target_mode = kwargs["distil_target_mode"]
     n_calibration = kwargs["n_calibration"]
-    return target_mode == "soft" or n_calibration > 0
+    n_complete = kwargs["monu_nc"]
+    cond = (target_mode == "soft" or n_calibration > 0) and n_complete > n_calibration
+    return cond
+
+
+def no_distillation_filter(**kwargs):
+    no_distillation = kwargs.get("no_distillation")
+    cond = not no_distillation or (
+        kwargs.get("weights_mode") == "constant"
+        and 0.99 < kwargs.get("weights_constant") < 1.01
+        and kwargs.get("weights_consistency_fn") == "quadratic"
+        and kwargs.get("weights_minimum") < 0.01
+        and kwargs.get("weights_neighbourhood") == 2
+        and kwargs.get("distil_target_mode") == "soft"
+        and kwargs.get("n_calibration") == 0
+    )
+    return cond
 
 
 # def wmode_exclude_no_distil(**kwargs):
@@ -76,7 +91,7 @@ if __name__ == "__main__":
     param_set.add_parameters(dataset="monuseg")
     param_set.add_parameters(monu_ms=[13315092, 21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575])
     param_set.add_parameters(monu_rr=[0.9])
-    param_set.add_parameters(monu_nc=[1])
+    param_set.add_parameters(monu_nc=[1, 2])
     param_set.add_parameters(iter_per_epoch=150)
     param_set.add_parameters(batch_size=8)
     param_set.add_parameters(epochs=50)
@@ -98,7 +113,7 @@ if __name__ == "__main__":
     param_set.add_parameters(sparse_data_rate=1.0)
     param_set.add_parameters(sparse_data_max=1.0)
     param_set.add_parameters(sparse_start_after=[15])
-    param_set.add_parameters(no_distillation=False)
+    param_set.add_parameters(no_distillation=[False, True])
     param_set.add_parameters(no_groundtruth=False)
     param_set.add_parameters(weights_mode=["constant", "balance_gt", "pred_consistency", "pred_entropy", "pred_merged"])
     param_set.add_parameters(weights_constant=[1.0])
@@ -114,18 +129,20 @@ if __name__ == "__main__":
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
     constrained.add_constraints(exclude_target_and_dice_calibration=exclude_target_and_dice_calibration)
+    constrained.add_constraints(no_distillation=no_distillation_filter)
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
             return TrainComputation(exp_name, comp_name, **kwargs, context=context, storage_factory=storage_factory)
+
         return build_fn
+
 
     # Wrap it together as an experiment
     experiment = Experiment("monuseg-unet-hard", constrained, make_build_fn(**env_params))
 
     # Finally run the experiment
     environment.run(experiment)
-
 
 """
  
