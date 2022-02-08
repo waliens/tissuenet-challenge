@@ -39,7 +39,7 @@ def weight_exclude(**kwargs):
 
 def exclude_target_and_dice_calibration(**kwargs):
     target_mode = kwargs["distil_target_mode"]
-    n_calibration = kwargs["hard_dice_n_calibration"]
+    n_calibration = kwargs["n_calibration"]
     return target_mode == "soft" or n_calibration > 0
 
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     param_set.add_parameters(weights_minimum=[0.0, 0.5])
     param_set.add_parameters(weights_neighbourhood=[1, 2])
     param_set.add_parameters(distil_target_mode=["soft", "hard_dice"])
-    param_set.add_parameters(hard_dice_n_calibration=[0, 1])
+    param_set.add_parameters(n_calibration=[0, 1])
 
     # param_set.add_separator()
     # param_set.add_parameters(monu_rr=[0.25, 0.5, 0.75])
