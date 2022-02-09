@@ -45,10 +45,10 @@ def get_metric(metric_name, cube):
     return [p_cube(metric_name) for p_values, p_cube in cube.iter_dimensions(*cube.parameters)]
 
 
-def plt_with_std(ax, x, mean, std, label, color, do_std=True):
+def plt_with_std(ax, x, mean, std, label, color, do_std=True, alpha=0.6):
     ax.plot(x, mean, label=label, color=color)
     if do_std:
-        ax.fill_between(x, mean - std, mean + std, color=color, alpha=0.6)
+        ax.fill_between(x, mean - std, mean + std, color=color, alpha=alpha)
 
 
 def plot_current_setup(cube, axes, label, color):

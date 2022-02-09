@@ -57,6 +57,11 @@ def no_distillation_filter(**kwargs):
     return cond
 
 
+def filter_nc_rr(**kwargs):
+    t = (str(kwargs["monu_rr"]), kwargs["monu_nc"], kwargs["n_calibration"])
+    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {("0.5", 3, 0), ("0.5", 4, 1), ("0.25", 5, 0), ("0.25", 6, 1)}
+
+
 # def wmode_exclude_no_distil(**kwargs):
 #     return kwargs.get("weights_mode") not in {"pred_consistency", "pred_merged", "pred_entropy"} or (
 #         kwargs.get("sparse_start_after") < 50
@@ -129,6 +134,12 @@ if __name__ == "__main__":
     constrained.add_constraints(weight_exclude=weight_exclude)
     constrained.add_constraints(exclude_target_and_dice_calibration=exclude_target_and_dice_calibration)
     constrained.add_constraints(no_distillation=no_distillation_filter)
+    constrained.add_constraints(filter_nc_rr=filter_nc_rr)
+
+    param_set.add_separator()
+    param_set.add_parameters()
+    param_set.add_parameters(monu_rr=[0.25, 0.5])
+    param_set.add_parameters(monu_nc=[3, 4, 5, 6])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
