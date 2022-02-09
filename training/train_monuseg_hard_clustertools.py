@@ -53,7 +53,6 @@ def no_distillation_filter(**kwargs):
         and kwargs.get("weights_minimum") < 0.01
         and kwargs.get("weights_neighbourhood") == 2
         and kwargs.get("distil_target_mode") == "soft"
-        and kwargs.get("n_calibration") == 0
     )
     return cond
 
