@@ -59,7 +59,7 @@ def no_distillation_filter(**kwargs):
 
 def filter_nc_rr(**kwargs):
     t = (str(kwargs["monu_rr"]), kwargs["monu_nc"], kwargs["n_calibration"])
-    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {("0.5", 3, 0), ("0.5", 4, 1), ("0.25", 5, 0), ("0.25", 6, 1)}
+    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {("0.5", 2, 0), ("0.5", 3, 1), ("0.5", 4, 0), ("0.25", 5, 1)}
 
 
 # def wmode_exclude_no_distil(**kwargs):
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     param_set.add_separator()
     param_set.add_parameters()
     param_set.add_parameters(monu_rr=[0.25, 0.5])
-    param_set.add_parameters(monu_nc=[3, 4, 5, 6])
+    param_set.add_parameters(monu_nc=[3, 4, 5])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
@@ -153,10 +153,3 @@ if __name__ == "__main__":
 
     # Finally run the experiment
     environment.run(experiment)
-
-"""
- 
-~/miniconda3/envs/py-gpu/bin/python train_monuseg_hard_clustertools.py --save_path /home/rmormont/models/monuseg-unet/hard/weights --data_path /scratch/users/rmormont/monuseg --host="https://research.cytomine.be" --public_key="13cad665-8b7a-4f9f-a6c0-93166e33ddb2" --private_key="520c4556-7f36-4cf1-82af-010f6be9adb3"  --device "cuda:0" --n_jobs 4 --th_step 0.0005 debug
- 
-~/miniconda3/envs/py-gpu/bin/python train_monuseg_hard_clustertools.py --save_path /home/rmormont/models/monuseg-unet/hard/weights --data_path /scratch/users/rmormont/monuseg --host="https://research.cytomine.be" --public_key="13cad665-8b7a-4f9f-a6c0-93166e33ddb2" --private_key="520c4556-7f36-4cf1-82af-010f6be9adb3" --device "cuda:0" --n_jobs 4 --th_step 0.0005 slurm --n_proc 4 --gpu 1 --memory 8G --time 10:00:00
-"""
