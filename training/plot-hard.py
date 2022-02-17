@@ -54,6 +54,14 @@ def make_label(wmode, params):
     return ", ".join(["{}={}".format(n, p) for n, p in zip(n, v)])
 
 
+def get_metric_without_none(cube, metric):
+    data = []
+    for _, in_cube in cube.iter_dimensions(*cube.parameters):
+        if in_cube.diagnose()["Missing ratio"] <= 0.0:
+            data.append(in_cube(metric))
+    return np.array(data)
+
+
 for (monu_rr, monu_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_params):
     plt.figure(figsize=[12.8, 4.8])
     for_params = {
@@ -75,10 +83,7 @@ for (monu_rr, monu_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_para
         rr, nd, wm, wfn, wmin, wneigh, tmode = values
         if wm == "pred_merged" or wm == "pred_consistency":
             continue
-        if in_cube.metadata["monu_nc"] == "4" and 0.49 < float(in_cube.metadata["monu_rr"]) < 0.51 and in_cube.metadata["n_calibration"] == "1":
-            if in_cube.diagnose()["Missing ratio"] < 1.0:
-                print("missing ? ", in_cube.metadata, in_cube.diagnose())
-        if in_cube.diagnose()["Missing ratio"] > 0.0:
+        if in_cube.diagnose()["Missing ratio"] >= 1.0:
             continue
         at_least_one = True
         label = make_label(wm, {
@@ -89,7 +94,7 @@ for (monu_rr, monu_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_para
         })
 
         print("> ", label)
-        val_dice = np.array(get_metric("val_dice", in_cube))
+        val_dice = np.array(get_metric_without_none(in_cube, "val_dice"))
         dice_mean = np.mean(val_dice, axis=0)
         dice_std = np.std(val_dice, axis=0)
         x = np.arange(dice_mean.shape[0])
