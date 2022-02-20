@@ -501,12 +501,15 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     mask_dims = (height, width)
 
     # build ground truth
-    roi_poly = box(x_min, y_min, x_min + width, y_min + height)
-    ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
-    ground_truth = [convert_poly(g, zoom_level, roi.height) for g in ground_truth]
-    translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
+    if len(ground_truth) > 0:
+        roi_poly = box(x_min, y_min, x_min + width, y_min + height)
+        ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
+        ground_truth = [convert_poly(g, zoom_level, roi.height) for g in ground_truth]
+        translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
 
-    y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
+        y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
+    else:
+        y_true = np.zeros(mask_dims, dtype=np.uint8)
     y_pred = np.zeros(y_true.shape, dtype=np.double)
     y_acc = np.zeros(y_true.shape, dtype=np.int)
 

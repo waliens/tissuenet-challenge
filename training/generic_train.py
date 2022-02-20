@@ -21,7 +21,8 @@ from torchvision.transforms import transforms
 from augment import get_aug_transforms, get_norm_transform
 from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState, \
     CropWithThresholdedCue
-from threshold_optimizer import linear_search, Thresholdable, plot_thresh, thresh_exhaustive_eval
+from segpc import SegpcDatasetGenerator
+from threshold_optimizer import Thresholdable, thresh_exhaustive_eval
 from monuseg import MonusegDatasetGenerator
 from thyroid import ThyroidDatasetGenerator
 from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
@@ -140,10 +141,13 @@ def main(argv):
         parser.add_argument("-l", "--loss", dest="loss", default="bce", help="['dice','bce','both']")
         parser.add_argument("-r", "--rseed", dest="rseed", default=42, type=int)
         parser.add_argument("-i", "--iter_per_epoch", dest="iter_per_epoch", default=0, type=int)
-        parser.add_argument("--dataset", dest="dataset", default="thyroid", help="in ['thyroid', 'monuseg', 'pannuke']")
+        parser.add_argument("--dataset", dest="dataset", default="thyroid", help="in ['thyroid', 'monuseg', 'segpc']")
         parser.add_argument("--monu_rr", dest="monuseg_remove_ratio", default=0.0, type=float)
         parser.add_argument("--monu_ms", dest="monuseg_missing_seed", default=42, type=int)
         parser.add_argument("--monu_nc", dest="monuseg_n_complete", default=1, type=int)
+        parser.add_argument("--segpc_rr", dest="segpc_remove_ratio", default=0.0, type=float)
+        parser.add_argument("--segpc_ms", dest="segpc_missing_seed", default=42, type=int)
+        parser.add_argument("--segpc_nc", dest="segpc_n_complete", default=298, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--save_cues", dest="save_cues", action="store_true")
@@ -235,6 +239,12 @@ def main(argv):
                                               remove_ratio=args.monuseg_remove_ratio,
                                               n_complete=args.monuseg_n_complete,
                                               n_calibrate=args.n_calibration)
+        elif args.dataset == "segpc":
+            dataset = SegpcDatasetGenerator(args.data_path, args.tile_size,
+                                            missing_seed=args.segpc_missing_seed,
+                                            remove_ratio=args.segpc_remove_ratio,
+                                            n_complete=args.segpc_n_complete,
+                                            n_calibrate=args.n_calibration)
         else:
             raise ValueError("Unknown dataset '{}'".format(args.dataset))
 
@@ -320,6 +330,7 @@ def main(argv):
             print("Eval at epoch {}:".format(e))
 
             all_y_pred, all_y_true = np.array([]), np.array([])
+            no_fg_counter = 0
             for i, roi in enumerate(val_set_list):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
@@ -335,12 +346,16 @@ def main(argv):
                 all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
                 all_y_true = np.hstack([all_y_true, y_true.flatten()])
 
-                val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten())
-                val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten())
+                val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten(), labels=[0, 1])
+                if np.count_nonzero(y_true) == 0:
+                    no_fg_counter += 1
+                    val_roc_auc[i] = 0
+                else:
+                    val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten(), labels=[0, 1])
                 val_dice[i] = soft_dice_coefficient(y_true, y_pred)
 
             val_loss = np.mean(val_losses)
-            roc_auc = np.mean(val_roc_auc)
+            roc_auc = np.mean(val_roc_auc) * len(val_set_list) / (len(val_set_list) - no_fg_counter)
 
             th_opt = Thresholdable(all_y_true, all_y_pred)
             thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
@@ -421,7 +436,8 @@ class TrainComputation(Computation):
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
             weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
-            monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_calibration=0):
+            monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_calibration=0, segpc_rr=0.0, segpc_ms=42,
+            segpc_nc=298):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -463,7 +479,10 @@ class TrainComputation(Computation):
                 "--iter_per_epoch", str(iter_per_epoch),
                 "--th_step", str(self._th_step),
                 "--distil_target_mode", str(distil_target_mode),
-                "--n_calibration", str(n_calibration)]
+                "--n_calibration", str(n_calibration),
+                "--segpc_rr", str(segpc_rr),
+                "--segpc_ms", str(segpc_ms),
+                "--segpc_nc", str(segpc_nc)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:
