@@ -167,6 +167,7 @@ def main(argv):
             save_weights(save_path, new_crops, prefix="e_{}".format(args.epoch))
             save_cues(save_path, new_crops, prefix="e_{}".format(args.epoch))
 
+
 if __name__ == "__main__":
     import sys
 
