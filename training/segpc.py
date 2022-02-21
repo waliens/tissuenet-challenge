@@ -2,10 +2,15 @@
 import os
 from collections import defaultdict
 
+from shapely.affinity import affine_transform
 from skimage.io import imread
 from sldc.locator import mask_to_objects_2d
 
 from dataset import DatasetsGenerator, MemoryCrop, CropTrainDataset
+
+
+def change_referential(polygon, height):
+    return affine_transform(polygon, [1, 0, 0, -1, 0, height])
 
 
 class SegpcDatasetGenerator(DatasetsGenerator):
@@ -31,7 +36,7 @@ class SegpcDatasetGenerator(DatasetsGenerator):
             objects = mask_to_objects_2d(mask)
             if len(objects) > 0:
                 objects, _ = zip(*objects)
-            self._annots_per_image[filename] = objects
+            self._annots_per_image[filename] = [change_referential(o, mask.shape[0]) for o in objects]
 
     def _crops(self, path):
         images, masks = list(), list()
