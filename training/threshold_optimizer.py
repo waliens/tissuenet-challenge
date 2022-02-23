@@ -19,11 +19,11 @@ class Thresholdable(object):
             upper = self._y_pred[index]
         return lower, upper
 
-    def eval(self, x):
+    def eval(self, x, eps=1e-8):
         gt = self._y_pred > x
         denom = 2 * np.count_nonzero(np.logical_and(gt, self._y_true))
         numer = np.count_nonzero(gt) + np.count_nonzero(self._y_true)
-        return denom / numer
+        return denom / (numer + eps)
 
     @property
     def y_pred(self):
