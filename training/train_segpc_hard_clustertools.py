@@ -33,9 +33,10 @@ def computation_changing_parameters(exp: Experiment, env, excluded=None):
     changing_parameters = [pname for pname, value_set in parameters.items() if len(value_set) > 1]
     processed = set()
 
+    pre_excluded = list(excluded)
     tb = pt()
     # Add headers
-    tb.field_names = ["ID"] + changing_parameters
+    tb.field_names = ["ID"] + [p for p in pre_excluded] + changing_parameters
     # Add rows
     for comp in computations:
         param_comb_id = tuple(float2str(comp.parameters[pname]) for pname in changing_parameters)
@@ -43,6 +44,8 @@ def computation_changing_parameters(exp: Experiment, env, excluded=None):
             continue
         excluded.add(param_comb_id)
         row = [int(comp.comp_name.rsplit("-", 1)[-1])]
+        for excl_param in pre_excluded:
+            row.append(comp.parameters[excl_param])
         for param in changing_parameters:
             row.append(comp.parameters[param])
         tb.add_row(row)
@@ -155,12 +158,12 @@ if __name__ == "__main__":
 
     param_set = ParameterSet()
     param_set.add_parameters(dataset="segpc")
-    param_set.add_parameters(segpc_ms=segpc_ms)
+    param_set.add_parameters(segpc_ms=35920466)
     param_set.add_parameters(segpc_rr=[0.9])
     param_set.add_parameters(segpc_nc=[30])
     param_set.add_parameters(iter_per_epoch=150)
     param_set.add_parameters(batch_size=8)
-    param_set.add_parameters(epochs=50)
+    param_set.add_parameters(epochs=100)
     param_set.add_parameters(overlap=0)
     param_set.add_parameters(tile_size=512)
     param_set.add_parameters(lr=0.001)
@@ -178,7 +181,7 @@ if __name__ == "__main__":
     param_set.add_parameters(save_cues=False)
     param_set.add_parameters(sparse_data_rate=1.0)
     param_set.add_parameters(sparse_data_max=1.0)
-    param_set.add_parameters(sparse_start_after=[5])
+    param_set.add_parameters(sparse_start_after=[20])
     param_set.add_parameters(no_distillation=[False, True])
     param_set.add_parameters(no_groundtruth=False)
     param_set.add_parameters(weights_mode=["constant", "balance_gt", "pred_entropy", "pred_merged"])
