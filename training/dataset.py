@@ -598,7 +598,7 @@ def sizeof_fmt(num, suffix='B'):
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
 
-def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1):
+def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1, progress_fn=None):
     if len(crops) == 0:
         return list()
     dataset = MultiCropsSet(crops, in_trans=in_trans, overlap=overlap)
@@ -618,7 +618,7 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
             all_ys[annot_id].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
 
     awcues = list()
-    for crop in crops:
+    for i, crop in enumerate(crops):
         w, h = crop.width, crop.height
         cue = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
@@ -628,6 +628,8 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         cue /= acc
         awcues.append(CropWithCue(crop, cue=cue))
         del (all_ys[crop.unique_identifier])
+        if progress_fn is not None:
+            progress_fn(i, len(crops))
 
     return awcues
 

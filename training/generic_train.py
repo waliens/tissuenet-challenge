@@ -115,7 +115,12 @@ def determine_optimal_threshold(calibration_list, dataset, model, args, device):
     return thresholds[best_idx], dices[best_idx]
 
 
-def main(argv):
+def progress(cls, start, end, _i, n):
+    if cls is not None:
+        cls.notify_progress((start + (_i / n) * (end - start)))
+
+
+def main(argv, computation=None):
     """
 
     IMAGES VALID:
@@ -293,6 +298,9 @@ def main(argv):
         }
 
         for e in range(args.epochs):
+            progress_epoch_start = e / args.epochs
+            progress_epoch_end = progress_epoch_start + (1 / args.epochs)
+            progress(computation, 0, 100, e, args.epochs)
             print("########################")
             print("        Epoch {}".format(e))
             print("########################")
@@ -319,6 +327,10 @@ def main(argv):
                 epoch_losses = [loss.detach().cpu().item()] + epoch_losses[:5]
                 print("{} - {:1.5f}".format(i, np.mean(epoch_losses)))
                 results["train_losses"].append(epoch_losses[0])
+                # 1/8 of the progress
+                progress(computation,
+                         progress_epoch_start, progress_epoch_start + (progress_epoch_end - progress_epoch_start) / 8,
+                         i + 1, args.iter_per_epoch if args.iter_per_epoch > 0 else len(concat_dataset) / args.batch_size)
 
             unet.eval()
             # validation
@@ -354,6 +366,11 @@ def main(argv):
                     val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten(), labels=[0, 1])
                 val_dice[i] = soft_dice_coefficient(y_true, y_pred)
 
+                progress(computation,
+                         progress_epoch_start + (progress_epoch_end - progress_epoch_start) / 8,
+                         progress_epoch_start + 3 * (progress_epoch_end - progress_epoch_start) / 8,
+                         i + 1, len(val_set_list))
+
             val_loss = np.mean(val_losses)
             roc_auc = np.mean(val_roc_auc) * len(val_set_list) / (len(val_set_list) - no_fg_counter)
 
@@ -381,7 +398,10 @@ def main(argv):
                     print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
                     new_crops = predict_annotation_crops_with_cues(
                         unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
-                        overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs)
+                        overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs,
+                        progress_fn=partial(progress, computation,
+                                            progress_epoch_start + 3 * (progress_epoch_end - progress_epoch_start) / 8,
+                                            progress_epoch_start + 7 * (progress_epoch_end - progress_epoch_start) / 8))
                     if args.distil_target_mode == 'hard_dice':
                         if len(calibration_list) == 0:
                             raise ValueError("hard_dice requires setting a positive number of calibration images")
@@ -489,7 +509,7 @@ class TrainComputation(Computation):
             argv.append("--no_distillation")
         if no_groundtruth:
             argv.append("--no_groundtruth")
-        for k, v in main(argv).items():
+        for k, v in main(argv, computation=self).items():
             results[k] = v
 
 
