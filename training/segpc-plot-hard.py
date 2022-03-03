@@ -7,10 +7,15 @@ from clustertools import build_datacube
 from matplotlib import pyplot as plt
 
 
+def get_x(cube):
+    iter_per_epoch = int(cube.metadata['iter_per_epoch'])
+    epochs = int(cube.metadata['epochs'])
+    return np.arange(0, epochs * iter_per_epoch, iter_per_epoch)
+
+
 baseline_cube = build_datacube("segpc-unet-baseline")
 baseline_dice = baseline_cube("val_dice")
 bl_dice_avg, bl_dice_std = np.mean(baseline_dice, axis=0).squeeze(), np.std(baseline_dice, axis=0).squeeze()
-del baseline_cube
 cube = build_datacube("segpc-unet-hard")
 
 
@@ -76,6 +81,7 @@ class ColorByCounter(object):
 color_map = defaultdict(ColorByCounter(start=1))
 
 
+
 for (segpc_rr, segpc_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_params):
     plt.figure(figsize=[12.8, 4.8])
     for_params = {
@@ -84,8 +90,9 @@ for (segpc_rr, segpc_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_pa
         "sparse_start_after": str(ssa),
         "n_calibration": n_calib,
     }
-
-    plt_with_std(plt.gca(), np.linspace(0, 49, 100), bl_dice_avg, bl_dice_std, label="baseline", color=COLORS[0])
+    base_x = get_x(baseline_cube)
+    max_x = np.max(base_x)
+    plt_with_std(plt.gca(), base_x, bl_dice_avg, bl_dice_std, label="baseline", color=COLORS[0])
 
     dice_ymin, dice_ymax = np.min(bl_dice_avg), np.max(bl_dice_avg)
 
@@ -111,11 +118,11 @@ for (segpc_rr, segpc_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_pa
         val_dice = np.array(get_metric_without_none(in_cube, "val_dice"))
         dice_mean = np.mean(val_dice, axis=0)
         dice_std = np.std(val_dice, axis=0)
-        x = np.linspace(0, 49, dice_mean.shape[0])
-
+        x = get_x(in_cube)
         plt_with_std(plt.gca(), x, dice_mean, dice_std, label, color_map[values],
                      do_std=False, alpha=0.2)
 
+        max_x = max(max_x, np.max(x))
         dice_ymin = min(dice_ymin, np.min(dice_mean))
         dice_ymax = max(dice_ymax, np.max(dice_mean))
 
@@ -123,7 +130,7 @@ for (segpc_rr, segpc_nc, ssa, n_calib), out_cube in cube.iter_dimensions(*out_pa
     plt.title(title)
 
     plt.ylim(dice_ymin * 0.95, dice_ymax * 1.05)
-    plt.xlim(0, 50)
+    plt.xlim(0, max_x)
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.ylabel("val dice (opt)")
