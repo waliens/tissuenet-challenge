@@ -192,6 +192,9 @@ if __name__ == "__main__":
     param_set.add_parameters(distil_target_mode=["soft", "hard_dice"])
     param_set.add_parameters(n_calibration=[0, 5])
 
+    param_set.add_separator()
+    param_set.add_parameters(segpc_ms=set(segpc_ms).difference({35920466}))
+
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(**segpc_constraints)
     constrained.add_constraints(weight_exclude=weight_exclude)
