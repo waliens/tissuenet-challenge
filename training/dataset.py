@@ -94,6 +94,11 @@ class BaseCrop(object):
 
     @property
     @abstractmethod
+    def height_reference(self):
+        pass
+
+    @property
+    @abstractmethod
     def offset(self):
         pass
 
@@ -157,12 +162,16 @@ class AnnotationCrop(BaseCrop):
         return self._extract_image_box()[2]
 
     @property
+    def height_reference(self):
+        return self.image_instance.height
+
+    @property
     def offset(self):
         return self._extract_image_box()[0]
 
     @property
     def unique_identifier(self):
-        return str(self._annotation.id)
+        return self._annotation.id
 
     def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
         start = crop_start
@@ -319,6 +328,10 @@ class MemoryCrop(BaseCrop):
     @property
     def height(self):
         return self._image.height
+
+    @property
+    def height_reference(self):
+        return self.height
 
     @property
     def offset(self):
@@ -498,7 +511,7 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     if len(ground_truth) > 0:
         roi_poly = box(x_min, y_min, x_min + width, y_min + height)
         ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
-        ground_truth = [convert_poly(g, zoom_level, roi.height) for g in ground_truth]
+        ground_truth = [convert_poly(g, zoom_level, roi.height_reference) for g in ground_truth]
         translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
 
         y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
