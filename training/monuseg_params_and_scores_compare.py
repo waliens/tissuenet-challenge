@@ -10,45 +10,7 @@ import imageio
 
 from itertools import chain
 
-
-COLORS = [
-    "#1f78b4",
-    "#33a02c",
-    "#e31a1c",
-    "#ff7f00",
-    "#6a3d9a",
-    "#b15928",
-    "#a6cee3",
-    "#b2df8a",
-    "#fb9a99",
-    "#fdbf6f",
-    "#cab2d6",
-    "#8dd3c7",
-    "#bebada",
-    "#fb8072",
-    "#80b1d3",
-    "#fdb462",
-    "#b3de69",
-    "#fccde5",
-    "#d9d9d9",
-    "#bc80bd",
-    "#ccebc5",
-    "#ffed6f"
-]
-
-
-def get_color(i):
-    return COLORS[i % len(COLORS)]
-
-
-def get_metric(metric_name, cube):
-    return [p_cube(metric_name) for p_values, p_cube in cube.iter_dimensions(*cube.parameters)]
-
-
-def plt_with_std(ax, x, mean, std, label, color, do_std=True, alpha=0.6):
-    ax.plot(x, mean, label=label, color=color)
-    if do_std:
-        ax.fill_between(x, mean - std, mean + std, color=color, alpha=alpha)
+from plot_helpers import get_metric, COLORS, plt_with_std
 
 
 def plot_current_setup(cube, axes, label, color):
