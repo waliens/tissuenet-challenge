@@ -237,7 +237,8 @@ def main(argv, computation=None):
         }
 
         if args.dataset == "thyroid":
-            dataset = ThyroidDatasetGenerator(args.data_path, args.tile_size, args.zoom_level)
+            dataset = ThyroidDatasetGenerator(args.data_path, args.tile_size, args.zoom_level,
+                                              n_calibrate=args.n_calibration)
         elif args.dataset == "monuseg":
             dataset = MonusegDatasetGenerator(args.data_path, args.tile_size,
                                               missing_seed=args.monuseg_missing_seed,

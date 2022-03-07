@@ -119,6 +119,11 @@ class AnnotationCrop(BaseCrop):
         self._other_annotations = [] if intersecting is None else intersecting
         self._other_polygons = [self._annot2poly(a) for a in self._other_annotations]
 
+        # load in memory
+        _, width, height = self._extract_image_box()
+        self._cache_crop, self._cache_mask = self._robust_load_image(), self._make_mask(0, 0, width, height)
+        self._cache_mask = Image.fromarray(self._cache_mask.astype(np.uint8))
+
     @property
     def tile_size(self):
         return self._tile_size
@@ -181,9 +186,8 @@ class AnnotationCrop(BaseCrop):
 
     def _get_image_filepath(self):
         (x, y), width, height = self._extract_image_box()
-        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(self._zoom_level,
-                                                                                self.image_instance.id, x, y, width,
-                                                                                height)
+        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(
+            self._zoom_level, self.image_instance.id, x, y, width, height)
 
     def _download_image(self):
         filepath = self._get_image_filepath()
@@ -215,51 +219,41 @@ class AnnotationCrop(BaseCrop):
         x_min, y_min, x_max, y_max = self._crop_bounds()
         return x_max - x_min, y_max - y_min
 
-    def _robust_load_crop(self, x, y):
-        attempts = 0
-        filepath = self._get_image_filepath()
-        while True:
-            try:
-                return Image.open(filepath).crop([x, y, x + self._tile_size, y + self._tile_size])
-            except OSError as e:
-                if attempts > 3:
-                    raise e
-                print("recreate '{}'".format(filepath))
-                os.remove(filepath)
-                self.download()
+    def _tile_from_cache(self, x, y):
+        crop_array = [x, y, x + self._tile_size, y + self._tile_size]
+        return self._cache_crop.crop(crop_array), self._cache_mask.crop(crop_array)
 
     def _robust_load_image(self):
         attempts = 0
         filepath = self._get_image_filepath()
         while True:
             try:
-                return Image.open(filepath)
+                image = Image.open(filepath)
+                image.load()
+                return image
             except OSError as e:
                 if attempts > 3:
                     raise e
                 print("recreate '{}'".format(filepath))
-                os.remove(filepath)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
                 self.download()
 
     def random_crop_and_mask(self):
         """in image coordinate system"""
-        (x_min, y_min), width, height = self._extract_image_box()
+        (_, _), width, height = self._extract_image_box()
         x = np.random.randint(0, width - self._tile_size + 1)
         y = np.random.randint(0, height - self._tile_size + 1)
-        crop = self._robust_load_crop(x, y)
-        mask = self._mask(x, y, self._tile_size, self._tile_size)
-        pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return (x, y, self._tile_size, self._tile_size), crop, pil_mask, pil_mask, pil_mask, False
+        crop, mask = self._tile_from_cache(x, y)
+        return (x, y, self._tile_size, self._tile_size), crop, mask, mask, mask, False
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
         _, width, height = self._extract_image_box()
-        image = self._robust_load_image()
-        mask = self._mask(0, 0, width, height)
-        pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return image, pil_mask, pil_mask, pil_mask, False
+        image, mask = self._cache_crop, self._cache_mask
+        return image, mask, mask, mask, False
 
-    def _mask(self, window_x, window_y, window_width, window_height):
+    def _make_mask(self, window_x, window_y, window_width, window_height):
         (crop_x, crop_y), crop_width, crop_height = self.image_box
         ground_truth = [self._polygon()] + self._other_polygons
         window = box(0, 0, window_width, window_height)

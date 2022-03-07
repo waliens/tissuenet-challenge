@@ -2,6 +2,7 @@ import os
 import joblib
 from collections import defaultdict
 
+import numpy as np
 from cytomine import Cytomine
 from cytomine.models import AnnotationCollection, ImageInstance
 from joblib import delayed
@@ -94,8 +95,9 @@ def generic_match_search(key_item, elements, item_fn, match_fn):
 
 
 class ThyroidDatasetGenerator(DatasetsGenerator):
-    def __init__(self, data_path, tile_size, zoom_level):
+    def __init__(self, data_path, tile_size, zoom_level, n_calibrate=0):
         # fetch annotations (filter val/test sets + other annotations)
+        self._n_calibrate = n_calibrate
         all_annotations = get_thyroid_annotations()
         pattern_collec = get_pattern_train(all_annotations)
         cell_collec = get_cell_train(all_annotations)
@@ -146,7 +148,15 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
             crop.download()
 
     def sets(self):
-        return self.base_cell_crops, self.pattern_crops, self.val_crops, []
+        if self._n_calibrate > 0:
+            indexes = np.arange(len(self.pattern_crops))
+            np.random.shuffle(indexes)
+            calibrate_crops = [self.pattern_crops[idx] for idx in indexes[:self._n_calibrate]]
+            pattern_crops = [self.pattern_crops[idx] for idx in indexes[self._n_calibrate:]]
+        else:
+            calibrate_crops = []
+            pattern_crops = self.pattern_crops
+        return self.base_cell_crops, pattern_crops, self.val_crops, calibrate_crops
 
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)
