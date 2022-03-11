@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from functools import partial
 from pathlib import Path
+from pprint import pprint
 
 import torch
 import numpy as np
@@ -97,7 +98,7 @@ def determine_optimal_threshold(calibration_list, dataset, model, args, device):
     for calibration_roi in calibration_list:
         y_pred, y_true = predict_roi(
             calibration_roi,
-            dataset.val_roi_foreground(calibration_roi),
+            dataset.roi_foregrounds(calibration_roi),
             model, device,
             in_trans=get_norm_transform(),
             batch_size=args.batch_size,
@@ -184,7 +185,7 @@ def main(argv, computation=None):
         parser.add_argument("--n_calibration", dest="n_calibration", type=int, default=1)
         parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
-        print(args)
+        pprint(vars(args))
 
         if args.no_groundtruth and args.sparse_start_after == -1:
             raise ValueError("no ground truth experiment should start adding sparse data after first epoch")
@@ -347,7 +348,7 @@ def main(argv, computation=None):
             for i, roi in enumerate(val_set_list):
                 with torch.no_grad():
                     y_pred, y_true = predict_roi(
-                        roi, dataset.val_roi_foreground(roi), unet, device,
+                        roi, dataset.roi_foregrounds(roi), unet, device,
                         in_trans=get_norm_transform(),
                         batch_size=args.batch_size,
                         tile_size=args.tile_size,

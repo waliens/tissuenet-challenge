@@ -111,7 +111,6 @@ def min_weight_only_for_entropy(**kwargs):
 
 
 
-
 if __name__ == "__main__":
     set_stdout_logging()
     # Define the parameter set: the domain each variable can take

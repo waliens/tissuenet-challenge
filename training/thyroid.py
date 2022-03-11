@@ -1,3 +1,4 @@
+import math
 import os
 import joblib
 from collections import defaultdict
@@ -94,6 +95,14 @@ def generic_match_search(key_item, elements, item_fn, match_fn):
     return [elem for elem in elements if match_fn(key_item, item_fn(elem))]
 
 
+def get_crop_box(a, wsi, tile_size=512):
+    x_min, y_min, x_max, y_max = wkt.loads(a.location).bounds
+    x_min, y_min, x_max, y_max = int(x_min), int(y_min), math.ceil(x_max), math.ceil(y_max)
+    x_start, x_size = AnnotationCrop.get_start_size_ove_dimension(x_min, x_max - x_min, wsi.width, tile_size)
+    y_start, y_size = AnnotationCrop.get_start_size_ove_dimension(y_min, y_max - y_min, wsi.height, tile_size)
+    return box(x_start, y_start, x_start + x_size, y_start + y_size)
+
+
 class ThyroidDatasetGenerator(DatasetsGenerator):
     def __init__(self, data_path, tile_size, zoom_level, n_calibrate=0):
         # fetch annotations (filter val/test sets + other annotations)
@@ -114,11 +123,11 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
             "item_fn": lambda a: wkt.loads(a.location),
             "match_fn": lambda a, b: a.intersects(b)
         }
-        print("base cell crops... ", end="", flush=True)
+        print("base crops with intersections... ", end="", flush=True)
         annots_per_image = group_annot_per_image(train_collec)
         intersecting = {
             annot.id: generic_match_search(
-                key_item=box(*wkt.loads(annot.location).bounds),
+                key_item=get_crop_box(annot, images[annot.image], tile_size),
                 elements=annots_per_image[annot.image],
                 **match_params)
             for annot in train_collec
@@ -133,6 +142,8 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
             for roi in val_rois
         }
         print("done")
+
+        self._roi_foregrounds = {**self.val_rois_to_intersect, **intersecting}
 
         self.pattern_crops = [AnnotationCrop(
             images[annot.image], annot, download_path, tile_size,
@@ -161,5 +172,5 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)
 
-    def val_roi_foreground(self, val_roi):
-        return self.val_rois_to_intersect[val_roi.unique_identifier]
+    def roi_foregrounds(self, roi):
+        return self._roi_foregrounds[roi.unique_identifier]

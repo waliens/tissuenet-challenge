@@ -54,7 +54,7 @@ class SegpcDatasetGenerator(DatasetsGenerator):
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)
 
-    def val_roi_foreground(self, val_roi):
+    def roi_foregrounds(self, val_roi):
         return self._annots_per_image[os.path.basename(val_roi.img_path)]
 
     def crop(self, identifier):

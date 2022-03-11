@@ -173,18 +173,22 @@ class AnnotationCrop(BaseCrop):
     def unique_identifier(self):
         return self._annotation.id
 
-    def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
+    @staticmethod
+    def get_start_size_ove_dimension(crop_start, crop_size, wsi_size, tile_size):
         start = crop_start
         size = crop_size
-        if crop_size < self._tile_size:
-            start = crop_start + (crop_size - self._tile_size) // 2
-            size = self._tile_size
+        if crop_size < tile_size:
+            start = crop_start + (crop_size - tile_size) // 2
+            size = tile_size
         # make sure that the tile is in the image
         start = max(0, start)
         start = min(start, wsi_size - size)
         if start < 0:
             raise ValueError("image is smaller than the tile size")
         return start, size
+
+    def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
+        return AnnotationCrop.get_start_size_ove_dimension(crop_start, crop_size, wsi_size, self._tile_size)
 
     def _extract_image_box(self):
         crop_width, crop_height = self._crop_dims()
@@ -658,7 +662,7 @@ class DatasetsGenerator(object):
         pass
 
     @abstractmethod
-    def val_roi_foreground(self, val_roi):
+    def roi_foregrounds(self, val_roi):
         pass
 
     @abstractmethod
