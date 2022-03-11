@@ -126,8 +126,7 @@ class AnnotationCrop(BaseCrop):
 
         # load in memory
         _, width, height = self._extract_image_box()
-        self._cache_crop, self._cache_mask = self._robust_load_image(), self._make_mask(0, 0, width, height)
-        self._cache_mask = Image.fromarray(self._cache_mask.astype(np.uint8))
+        self._cache_mask = Image.fromarray(self._make_mask(0, 0, width, height).astype(np.uint8))
 
     @property
     def tile_size(self):
@@ -232,9 +231,9 @@ class AnnotationCrop(BaseCrop):
         x_min, y_min, x_max, y_max = self._crop_bounds()
         return x_max - x_min, y_max - y_min
 
-    def _tile_from_cache(self, x, y):
+    def _crop_from_cache(self, x, y):
         crop_array = [x, y, x + self._tile_size, y + self._tile_size]
-        return self._cache_crop.crop(crop_array), self._cache_mask.crop(crop_array)
+        return self._robust_load_image().crop(crop_array), self._cache_mask.crop(crop_array)
 
     def _robust_load_image(self):
         attempts = 0
@@ -257,13 +256,13 @@ class AnnotationCrop(BaseCrop):
         (_, _), width, height = self._extract_image_box()
         x = np.random.randint(0, width - self._tile_size + 1)
         y = np.random.randint(0, height - self._tile_size + 1)
-        crop, mask = self._tile_from_cache(x, y)
+        crop, mask = self._crop_from_cache(x, y)
         return (x, y, self._tile_size, self._tile_size), crop, mask, mask, mask, False
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
         _, width, height = self._extract_image_box()
-        image, mask = self._cache_crop, self._cache_mask
+        image, mask = self._robust_load_image(), self._cache_mask
         return image, mask, mask, mask, False
 
     def _make_mask(self, window_x, window_y, window_width, window_height):
