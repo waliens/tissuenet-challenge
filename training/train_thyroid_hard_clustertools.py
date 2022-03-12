@@ -156,8 +156,8 @@ if __name__ == "__main__":
     param_set.add_parameters(distil_target_mode=["soft", "hard_dice"])
     param_set.add_parameters(n_calibration=[0, 10])
 
-    # param_set.add_separator()
-    # param_set.add_parameters(rssed=seeds[1:])
+    param_set.add_separator()
+    param_set.add_parameters(rssed=seeds[1:4])
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
