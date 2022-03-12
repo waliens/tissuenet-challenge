@@ -157,7 +157,7 @@ if __name__ == "__main__":
     param_set.add_parameters(n_calibration=[0, 10])
 
     param_set.add_separator()
-    param_set.add_parameters(rssed=seeds[1:4])
+    param_set.add_parameters(rseed=seeds[1:4])
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
