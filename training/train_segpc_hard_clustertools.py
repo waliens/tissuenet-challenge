@@ -7,50 +7,7 @@ from clustertools.storage import PickleStorage
 from cytomine import Cytomine
 
 from generic_train import TrainComputation
-
-from prettytable import PrettyTable as pt
-
-
-def float2str(v):
-    if isinstance(v, float):
-        return "{:1.4f}".format(v)
-    return v
-
-
-def computation_changing_parameters(exp: Experiment, env, excluded=None):
-    if excluded is None:
-        excluded = set()
-    else:
-        excluded = set(excluded)
-    computations = list(exp.yield_computations(env.context()))
-    parameters = defaultdict(set)
-    for comp in computations:
-        for param, value in comp.parameters.items():
-            if param not in excluded:
-                parameters[param].add(float2str(value))
-                parameters[param].add(float2str(value))
-
-    changing_parameters = [pname for pname, value_set in parameters.items() if len(value_set) > 1]
-    processed = set()
-
-    pre_excluded = list(excluded)
-    tb = pt()
-    # Add headers
-    tb.field_names = ["ID"] + [p for p in pre_excluded] + changing_parameters
-    # Add rows
-    for comp in computations:
-        param_comb_id = tuple(float2str(comp.parameters[pname]) for pname in changing_parameters)
-        if param_comb_id in excluded:
-            continue
-        excluded.add(param_comb_id)
-        row = [int(comp.comp_name.rsplit("-", 1)[-1])]
-        for excl_param in pre_excluded:
-            row.append(comp.parameters[excl_param])
-        for param in changing_parameters:
-            row.append(comp.parameters[param])
-        tb.add_row(row)
-
-    print(tb)
+from train_monuseg_hard_clustertools import computation_changing_parameters
 
 
 def env_parser():
@@ -126,7 +83,7 @@ class SegpcDatasetConstraint(object):
 
 def read_segpc_datasets(dir):
     _, dirnames, _ = next(os.walk(dir))
-    dir_match = re.compile(r"^([0-9]+)_(0\.[0-9]{4})_([0-9]+)")
+    dir_match = re.compile(r"^([0-9]+)_([0-9]\.[0-9]{4})_([0-9]+)")
     constraints = dict()
     seeds, ratios, ncs = set(), set(), set()
 
