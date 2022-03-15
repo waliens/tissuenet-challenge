@@ -158,6 +158,10 @@ if __name__ == "__main__":
 
     param_set.add_separator()
     param_set.add_parameters(rseed=seeds[1:4])
+    param_set.add_separator()
+    param_set.add_parameters(rseed=seeds[4:8])
+    param_set.add_separator()
+    param_set.add_parameters(rseed=seeds[8:])
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
