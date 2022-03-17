@@ -1,3 +1,4 @@
+import itertools
 import os
 from collections import defaultdict
 
@@ -61,14 +62,28 @@ def no_distillation_filter(**kwargs):
 
 def filter_nc_rr(**kwargs):
     t = (str(kwargs["monu_rr"]), kwargs["monu_nc"], kwargs["n_calibration"])
-    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {("0.5", 2, 0), ("0.5", 3, 1), ("0.5", 4, 0), ("0.25", 5, 1)}
+    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {
+        ("0.5", 2, 0), ("0.5", 3, 1), ("0.5", 3, 0) #, ("0.25", 5, 1), ("0.25", 5, 0)
+    }
+
+
+def restrict_fn_absolute(**kwargs):
+    combinations = {
+        sum(tuples, ()) for tuples in itertools.product(
+        [("0", "0.9", "1"), ("1", "0.9", "2"), ("0", "0.9", "2"), ("1", "0.5", "3"), ("0", "0.5", "3")], #("1", "0.25", "5"), ("0", "0.25", "5")],
+        [("pred_consistency", ), ("pred_merged", )],
+        [("1", "0.0"), ("2", "0.0")])
+    }
+    return kwargs.get("weights_consistency_fn") == "quadratic" or (
+        (str(kwargs[p]) for p in ["n_calibration", "monu_rr", "monu_nc", "weights_mode", "weights_neighbourhood", "weights_minimum"]) in combinations
+    )
 
 
 def min_weight_only_for_entropy(**kwargs):
     is_half = lambda v: (0.49 < v < 0.51)
     is_0 = lambda v: v < 0.01
     wmin = kwargs["weights_minimum"]
-    return is_half(wmin) or is_0(wmin) or kwargs["weights_mode"] in {"pred_entropy", "pred_merged"}
+    return is_0(wmin) or kwargs["weights_mode"] in {"pred_entropy", "pred_merged"}
 
 
 # def wmode_exclude_no_distil(**kwargs):
@@ -190,6 +205,7 @@ if __name__ == "__main__":
     constrained.add_constraints(no_distillation=no_distillation_filter)
     constrained.add_constraints(filter_nc_rr=filter_nc_rr)
     constrained.add_constraints(min_weight_only_for_entropy=min_weight_only_for_entropy)
+    # constrained.add_constraints(restrict_fn_absolute=restrict_fn_absolute)
 
     param_set.add_separator()
     param_set.add_parameters()
@@ -198,6 +214,9 @@ if __name__ == "__main__":
 
     param_set.add_separator()
     param_set.add_parameters(weights_minimum=[0.1])
+
+    param_set.add_separator()
+    param_set.add_parameters(weights_consistency_fn=["absolute"])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
