@@ -1,6 +1,5 @@
 import os
 import re
-from collections import defaultdict
 
 from clustertools import set_stdout_logging, ParameterSet, Experiment, CTParser, ConstrainedParameterSet
 from clustertools.storage import PickleStorage
@@ -115,8 +114,8 @@ if __name__ == "__main__":
 
     param_set = ParameterSet()
     param_set.add_parameters(dataset="segpc")
-    param_set.add_parameters(segpc_ms=35920466)
-    param_set.add_parameters(segpc_rr=[0.9])
+    param_set.add_parameters(segpc_ms=segpc_ms)
+    param_set.add_parameters(segpc_rr=[0.9, 0.75])
     param_set.add_parameters(segpc_nc=[30])
     param_set.add_parameters(iter_per_epoch=150)
     param_set.add_parameters(batch_size=8)
@@ -141,16 +140,13 @@ if __name__ == "__main__":
     param_set.add_parameters(sparse_start_after=[20])
     param_set.add_parameters(no_distillation=[False, True])
     param_set.add_parameters(no_groundtruth=False)
-    param_set.add_parameters(weights_mode=["constant", "balance_gt", "pred_entropy", "pred_merged"])
+    param_set.add_parameters(weights_mode=["constant", "balance_gt", "pred_entropy", "pred_consistency", "pred_merged"])
     param_set.add_parameters(weights_constant=[0.05, 0.2, 1.0])
     param_set.add_parameters(weights_consistency_fn=["quadratic"])
     param_set.add_parameters(weights_minimum=[0.0, 0.1, 0.5])
     param_set.add_parameters(weights_neighbourhood=[2])
     param_set.add_parameters(distil_target_mode=["soft", "hard_dice"])
     param_set.add_parameters(n_calibration=[0, 5])
-
-    param_set.add_separator()
-    param_set.add_parameters(segpc_ms=set(segpc_ms).difference({35920466}))
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(**segpc_constraints)
