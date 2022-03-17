@@ -13,7 +13,7 @@ class ReevalMonusegComputation(Computation):
         self._data_path = data_path
         self._model_path = model_path
 
-    def run(self, result, sets="val,test", train_exp="none", comp_index=None, **parameters):
+    def run(self, result, sets="val,test", train_exp="none", best_only=False, comp_index=None, **parameters):
         import os
         import torch
         import numpy as np
@@ -43,11 +43,16 @@ class ReevalMonusegComputation(Computation):
                 res[__set + "_avg_soft_dice"].append(-1)
                 res[__set + "_roc_auc"].append(-1)
                 res[__set + "_hard_dice"].append(-1)
+                res[__set + "_dice_threshold"].append(-1)
+                res[__set + "_thresh_for_set"].append(-1)
                 res[__set + "_cm"].append(np.array([]))
                 res[__set + "_all_loss"].append(np.array([]))
                 res[__set + "_all_roc_auc"].append(np.array([]))
                 res[__set + "_all_hard_dice"].append(np.array([]))
                 res[__set + "_all_soft_dice"].append(np.array([]))
+
+        if best_only and "val" in sets:
+            raise ValueError("cannot use both best only and have a validation set in the sets")
 
         comp_params, comp_results = load_computation(train_exp, comp_index)
 
@@ -68,13 +73,21 @@ class ReevalMonusegComputation(Computation):
             ["val", "test"]
         )
 
-        sets = sets.split(",")
+        sets = sorted(sets.split(","), key=lambda v: "val" in v)
         n_epochs = len(comp_results['save_path'])
-        for epoch, model_filename in enumerate(comp_results['save_path']):
+        all_paths = comp_results['save_path']
+        best_threshold, best_epoch = None, None
+        if best_only:
+            best_dice = np.array(comp_results["val_dice"])
+            best_epoch = np.argmax(best_dice)
+            best_threshold = np.array(comp_results["threshold"])[best_epoch]
+            all_paths = [comp_results["save_path"][best_epoch]]
+
+        for epoch, model_filename in enumerate(all_paths):
             progress_start = epoch / n_epochs
             progress_end = progress_start + (1 / n_epochs)
             progress(self, 0, 1, epoch, n_epochs)
-            print("Epoch '{}'".format(epoch))
+            print("Epoch '{}'".format(best_epoch if best_only else epoch))
             model_filepath = os.path.join(self._model_path, model_filename)
             if os.path.exists(model_filepath):
                 unet.load_state_dict(torch.load(model_filepath))
@@ -83,6 +96,8 @@ class ReevalMonusegComputation(Computation):
             else:
                 fill_for_missing_epoch(result, sets)
                 continue
+
+            threshold = best_threshold
 
             n_sets = len(sets)
             for set_idx, _set in enumerate(sets):
@@ -142,6 +157,14 @@ class ReevalMonusegComputation(Computation):
                 avg_soft_dice = np.mean(soft_dices)
 
                 dice_threshold, hard_dice, thresholds, hard_dices = get_hard_dice(all_y_true, all_y_pred)
+
+                thresh_for_set = dice_threshold
+
+                if "val" in _set:
+                    threshold = dice_threshold
+                elif "test" in _set and threshold is None:
+                    dice_threshold = threshold
+
                 roc_auc = metrics.roc_auc_score(all_y_true, all_y_pred, labels=[0, 1])
                 cm = metrics.confusion_matrix(all_y_true.astype(np.uint8), (all_y_pred.flatten() > dice_threshold).astype(np.uint8))
                 del all_y_pred, all_y_true
@@ -157,6 +180,8 @@ class ReevalMonusegComputation(Computation):
                 result[_set + "_all_roc_auc"].append(roc_aucs)
                 result[_set + "_all_hard_dice"].append(hard_dices)
                 result[_set + "_all_soft_dice"].append(soft_dices)
+                result[_set + "_dice_threshold"].append(dice_threshold)
+                result[_set + "_thresh_for_set"].append(thresh_for_set)
 
         return result
 
