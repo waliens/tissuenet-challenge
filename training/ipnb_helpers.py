@@ -129,7 +129,7 @@ def get_column_headers(columns, total_train_img):
         ["\\multicolumn{3}{|c|}{$|\\mathcal{D}_{cal}|$}"],
     ]
 
-    for column in columns:
+    for _, column in columns:
         ncs = [k for k in column.keys() if k.endswith("_nc")]
         nc = 0
         if len(ncs) > 0:
@@ -148,7 +148,7 @@ def get_column_headers(columns, total_train_img):
     return os.linesep.join([(" & ".join(row) + "\\\\") for row in rows_content])
 
 
-def plot_table(metric_fn, rows, columns, total_train_imgs):
+def plot_table(rows, columns, total_train_imgs):
     print("\\begin{table*}")
     print("\\begin{tabular}{|ccc|" + "c" * len(columns) + "|}")
     print(get_column_headers(columns, total_train_imgs))
@@ -160,7 +160,7 @@ def plot_table(metric_fn, rows, columns, total_train_imgs):
             print(get_super_row(current_mode, len(columns) + 3))
 
         row_items = list()
-        for column in columns:
+        for metric_fn, column in columns:
             values = metric_fn(**row, **column)
             if values is None:
                 row_items.append(" " * 18)
