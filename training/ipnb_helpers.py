@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 from clustertools import build_datacube
-from clustertools.parameterset import build_parameter_set
+from clustertools.parameterset import build_parameter_set, CartesianParameterSet
 
 from plot_helpers import get_metric_without_none
 
@@ -50,12 +50,18 @@ def get_metric_by_comp_index(cube, metric, reeval_datacube, index_params, comp_i
     return np.array(metrics)
 
 
+def base_parameter_set(param_set):
+    while not isinstance(param_set, CartesianParameterSet):
+        param_set = param_set.param_set
+    return param_set
+
+
 class ExperimentReader(object):
     def __init__(self, exp_name, reeval_exp_name, *seed_params):
         self._cube = build_datacube(exp_name)
         self._param_set = build_parameter_set(exp_name)
         self._reeval_cube = build_datacube(reeval_exp_name)
-        self._index_params, self._cube_index = create_comp_index(self._cube, self._param_set)
+        self._index_params, self._cube_index = create_comp_index(self._cube, base_parameter_set(self._param_set))
         self._seed_params = set(seed_params)
 
     def _get_metric(self, metric, src="reeval", **params):
