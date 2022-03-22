@@ -56,7 +56,7 @@ class ReevalMonusegComputation(Computation):
 
         comp_params, comp_results = load_computation(train_exp, comp_index)
 
-        device = torch.device(device="cuda:0")
+        device = torch.device(device=self._device)
         unet = Unet(comp_params['init_fmaps'], n_classes=1)
         unet.to(device)
 
@@ -69,7 +69,8 @@ class ReevalMonusegComputation(Computation):
             result,
             ["hard_dice", "roc_auc", "cm",
              "avg_soft_dice", "avg_hard_dice", "avg_roc_auc", "avg_loss",
-             "all_loss", "all_roc_auc", "all_hard_dice", "all_soft_dice"],
+             "all_loss", "all_roc_auc", "all_hard_dice", "all_soft_dice",
+             "thresh_for_set", "dice_threshold"],
             ["val", "test"]
         )
 
@@ -92,8 +93,8 @@ class ReevalMonusegComputation(Computation):
             if os.path.exists(model_filepath):
                 unet.load_state_dict(torch.load(model_filepath))
                 unet.eval()
-                print("/!\\ model '{}' missing".format(model_filepath))
             else:
+                print("/!\\ model '{}' missing".format(model_filepath))
                 fill_for_missing_epoch(result, sets)
                 continue
 
