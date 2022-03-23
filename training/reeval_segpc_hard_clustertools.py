@@ -64,7 +64,6 @@ def main(argv):
     # Finally run the experiment
     environment.run(experiment)
 
-# ~/miniconda3/envs/py-gpu/bin/python reeval_segpc_hard_clustertools.py --model_path /home/rmormont/models/segpc-unet/hard --data_path /scratch/users/rmormont/segpc/with_test_set --n_jobs 4 --device cuda:0 slurm --n_proc 4 --gpu 1 --memory 8G --time 15:00
 
 if __name__ == "__main__":
     import sys
