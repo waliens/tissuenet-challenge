@@ -163,7 +163,8 @@ class ReevalMonusegComputation(Computation):
 
                 if "val" in _set:
                     threshold = dice_threshold
-                elif "test" in _set and threshold is None:
+                elif "test" in _set and threshold is not None:
+                    print("pick threshold from outer scope : {} <= {}".format(dice_threshold, threshold))
                     dice_threshold = threshold
 
                 roc_auc = metrics.roc_auc_score(all_y_true, all_y_pred, labels=[0, 1])
