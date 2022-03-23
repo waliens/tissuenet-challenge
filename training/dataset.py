@@ -94,6 +94,11 @@ class BaseCrop(object):
 
     @property
     @abstractmethod
+    def height_reference(self):
+        pass
+
+    @property
+    @abstractmethod
     def offset(self):
         pass
 
@@ -118,6 +123,10 @@ class AnnotationCrop(BaseCrop):
         self._zoom_level = zoom_level
         self._other_annotations = [] if intersecting is None else intersecting
         self._other_polygons = [self._annot2poly(a) for a in self._other_annotations]
+
+        # load in memory
+        _, width, height = self._extract_image_box()
+        self._cache_mask = Image.fromarray(self._make_mask(0, 0, width, height).astype(np.uint8))
 
     @property
     def tile_size(self):
@@ -152,25 +161,33 @@ class AnnotationCrop(BaseCrop):
         return self._extract_image_box()[2]
 
     @property
+    def height_reference(self):
+        return self.image_instance.height
+
+    @property
     def offset(self):
         return self._extract_image_box()[0]
 
     @property
     def unique_identifier(self):
-        return str(self._annotation.id)
+        return self._annotation.id
 
-    def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
+    @staticmethod
+    def get_start_size_ove_dimension(crop_start, crop_size, wsi_size, tile_size):
         start = crop_start
         size = crop_size
-        if crop_size < self._tile_size:
-            start = crop_start + (crop_size - self._tile_size) // 2
-            size = self._tile_size
+        if crop_size < tile_size:
+            start = crop_start + (crop_size - tile_size) // 2
+            size = tile_size
         # make sure that the tile is in the image
         start = max(0, start)
         start = min(start, wsi_size - size)
         if start < 0:
             raise ValueError("image is smaller than the tile size")
         return start, size
+
+    def _get_start_and_size_over_dimension(self, crop_start, crop_size, wsi_size):
+        return AnnotationCrop.get_start_size_ove_dimension(crop_start, crop_size, wsi_size, self._tile_size)
 
     def _extract_image_box(self):
         crop_width, crop_height = self._crop_dims()
@@ -181,9 +198,8 @@ class AnnotationCrop(BaseCrop):
 
     def _get_image_filepath(self):
         (x, y), width, height = self._extract_image_box()
-        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(self._zoom_level,
-                                                                                self.image_instance.id, x, y, width,
-                                                                                height)
+        return os.path.join(self._working_path, "{}-{}-{}-{}-{}-{}.png").format(
+            self._zoom_level, self.image_instance.id, x, y, width, height)
 
     def _download_image(self):
         filepath = self._get_image_filepath()
@@ -215,51 +231,41 @@ class AnnotationCrop(BaseCrop):
         x_min, y_min, x_max, y_max = self._crop_bounds()
         return x_max - x_min, y_max - y_min
 
-    def _robust_load_crop(self, x, y):
-        attempts = 0
-        filepath = self._get_image_filepath()
-        while True:
-            try:
-                return Image.open(filepath).crop([x, y, x + self._tile_size, y + self._tile_size])
-            except OSError as e:
-                if attempts > 3:
-                    raise e
-                print("recreate '{}'".format(filepath))
-                os.remove(filepath)
-                self.download()
+    def _crop_from_cache(self, x, y):
+        crop_array = [x, y, x + self._tile_size, y + self._tile_size]
+        return self._robust_load_image().crop(crop_array), self._cache_mask.crop(crop_array)
 
     def _robust_load_image(self):
         attempts = 0
         filepath = self._get_image_filepath()
         while True:
             try:
-                return Image.open(filepath)
+                image = Image.open(filepath)
+                image.load()
+                return image
             except OSError as e:
                 if attempts > 3:
                     raise e
                 print("recreate '{}'".format(filepath))
-                os.remove(filepath)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
                 self.download()
 
     def random_crop_and_mask(self):
         """in image coordinate system"""
-        (x_min, y_min), width, height = self._extract_image_box()
+        (_, _), width, height = self._extract_image_box()
         x = np.random.randint(0, width - self._tile_size + 1)
         y = np.random.randint(0, height - self._tile_size + 1)
-        crop = self._robust_load_crop(x, y)
-        mask = self._mask(x, y, self._tile_size, self._tile_size)
-        pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return (x, y, self._tile_size, self._tile_size), crop, pil_mask, pil_mask, pil_mask, False
+        crop, mask = self._crop_from_cache(x, y)
+        return (x, y, self._tile_size, self._tile_size), crop, mask, mask, mask, False
 
     def crop_and_mask(self):
         """in image coordinates system, get full crop and mask"""
         _, width, height = self._extract_image_box()
-        image = self._robust_load_image()
-        mask = self._mask(0, 0, width, height)
-        pil_mask = Image.fromarray(mask.astype(np.uint8))
-        return image, pil_mask, pil_mask, pil_mask, False
+        image, mask = self._robust_load_image(), self._cache_mask
+        return image, mask, mask, mask, False
 
-    def _mask(self, window_x, window_y, window_width, window_height):
+    def _make_mask(self, window_x, window_y, window_width, window_height):
         (crop_x, crop_y), crop_width, crop_height = self.image_box
         ground_truth = [self._polygon()] + self._other_polygons
         window = box(0, 0, window_width, window_height)
@@ -325,6 +331,10 @@ class MemoryCrop(BaseCrop):
     @property
     def height(self):
         return self._image.height
+
+    @property
+    def height_reference(self):
+        return self.height
 
     @property
     def offset(self):
@@ -504,7 +514,7 @@ def predict_roi(roi, ground_truth, model, device, in_trans=None, batch_size=1, t
     if len(ground_truth) > 0:
         roi_poly = box(x_min, y_min, x_min + width, y_min + height)
         ground_truth = [(wkt.loads(g.location) if isinstance(g, Annotation) else g) for g in ground_truth]
-        ground_truth = [convert_poly(g, zoom_level, roi.height) for g in ground_truth]
+        ground_truth = [convert_poly(g, zoom_level, roi.height_reference) for g in ground_truth]
         translated_gt = [translate(g.intersection(roi_poly), xoff=-x_min, yoff=-y_min) for g in ground_truth]
 
         y_true = rasterize(translated_gt, out_shape=mask_dims, fill=0, dtype=np.uint8)
@@ -598,7 +608,7 @@ def sizeof_fmt(num, suffix='B'):
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
 
-def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1):
+def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1, progress_fn=None):
     if len(crops) == 0:
         return list()
     dataset = MultiCropsSet(crops, in_trans=in_trans, overlap=overlap)
@@ -618,7 +628,7 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
             all_ys[annot_id].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
 
     awcues = list()
-    for crop in crops:
+    for i, crop in enumerate(crops):
         w, h = crop.width, crop.height
         cue = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
@@ -628,6 +638,8 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         cue /= acc
         awcues.append(CropWithCue(crop, cue=cue))
         del (all_ys[crop.unique_identifier])
+        if progress_fn is not None:
+            progress_fn(i, len(crops))
 
     return awcues
 
@@ -649,7 +661,7 @@ class DatasetsGenerator(object):
         pass
 
     @abstractmethod
-    def val_roi_foreground(self, val_roi):
+    def roi_foregrounds(self, val_roi):
         pass
 
     @abstractmethod

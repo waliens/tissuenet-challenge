@@ -66,7 +66,10 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
         image.download(os.path.join(image_path, "{originalFilename}"), override=False)
 
         fg = [convert_poly(wkt.loads(a.location), 0, image.height) for a in image_annots]
-        mask = rasterize(fg, out_shape=(image.height, image.width), fill=0, dtype=np.uint8) * 255
+        if len(fg) == 0:
+            mask = np.zeros((image.height, image.width), dtype=np.uint8)
+        else:
+            mask = rasterize(fg, out_shape=(image.height, image.width), fill=0, dtype=np.uint8) * 255
         mask_path = os.path.join(write_path, mask_folder)
         os.makedirs(mask_path, exist_ok=True)
         cv2.imwrite(os.path.join(mask_path, image.originalFilename.replace(".tif", ".png")), mask)
@@ -113,7 +116,7 @@ class MonusegDatasetGenerator(DatasetsGenerator):
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)
 
-    def val_roi_foreground(self, val_roi):
+    def roi_foregrounds(self, val_roi):
         return self._annots_per_image[os.path.basename(val_roi.img_path)]
 
     def crop(self, identifier):
@@ -139,16 +142,20 @@ class MonusegDatasetGenerator(DatasetsGenerator):
 
 def main(argv):
     with Cytomine.connect_from_cli(argv) as conn:
-        # np.random.seed(42)
+        np.random.seed(42)
         # remove_ratios = [0.0, 0.25, 0.5, 0.75, 0.9]
-        # n_completes = [1, 2, 3, 4, 5, 10, 15]
-        # seeds = np.random.randint(0, 99999999, [10])
+        n_completes = [1, 2, 3, 4, 5] #, 10, 15]
+        seeds = np.random.randint(0, 99999999, [10])
         #
         # for remove_ratio, n_complete, seed in itertools.product(remove_ratios, n_completes, seeds):
         #     get_monuseg_data("/scratch/users/rmormont/monuseg",
         #                      remove_ratio=remove_ratio, n_complete=n_complete, seed=seed)
-        get_monuseg_data("/scratch/users/rmormont/monuseg",
-                         remove_ratio=0, n_complete=30, seed=42)
+        # get_monuseg_data("/scratch/users/rmormont/monuseg",
+        #                  remove_ratio=0, n_complete=30, seed=42)
+
+        for seed in seeds:
+            for n_complete in n_completes:
+                get_monuseg_data("/scratch/users/rmormont/monuseg", remove_ratio=1.0, n_complete=n_complete, seed=seed)
 
 
 if __name__ == "__main__":

@@ -111,7 +111,7 @@ def main(argv):
         crop = dataset.crop(args.image)
 
         y_pred, y_true = predict_roi(
-            crop, dataset.val_roi_foreground(crop), unet, device,
+            crop, dataset.roi_foregrounds(crop), unet, device,
             in_trans=get_norm_transform(),
             batch_size=args.batch_size,
             tile_size=args.tile_size,

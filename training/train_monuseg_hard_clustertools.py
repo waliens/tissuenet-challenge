@@ -1,4 +1,7 @@
+import itertools
 import os
+from collections import defaultdict
+
 from clustertools import set_stdout_logging, ParameterSet, Experiment, CTParser, ConstrainedParameterSet
 from clustertools.storage import PickleStorage
 from cytomine import Cytomine
@@ -59,20 +62,80 @@ def no_distillation_filter(**kwargs):
 
 def filter_nc_rr(**kwargs):
     t = (str(kwargs["monu_rr"]), kwargs["monu_nc"], kwargs["n_calibration"])
-    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {("0.5", 2, 0), ("0.5", 3, 1), ("0.5", 4, 0), ("0.25", 5, 1)}
+    return (kwargs["monu_nc"] <= 2 and kwargs["monu_rr"] > 0.89) or t in {
+        ("0.5", 2, 0), ("0.5", 3, 1), ("0.5", 3, 0) #, ("0.25", 5, 1), ("0.25", 5, 0)
+    }
+
+
+def restrict_fn_absolute(**kwargs):
+    combinations = {
+        sum(tuples, ()) for tuples in itertools.product(
+        [("0", "0.9", "1"), ("1", "0.9", "2"), ("0", "0.9", "2"), ("1", "0.5", "3"), ("0", "0.5", "3")], #("1", "0.25", "5"), ("0", "0.25", "5")],
+        [("pred_consistency", ), ("pred_merged", )],
+        [("1", "0.0"), ("2", "0.0")])
+    }
+    return kwargs.get("weights_consistency_fn") == "quadratic" or (
+        (str(kwargs[p]) for p in ["n_calibration", "monu_rr", "monu_nc", "weights_mode", "weights_neighbourhood", "weights_minimum"]) in combinations
+    )
 
 
 def min_weight_only_for_entropy(**kwargs):
     is_half = lambda v: (0.49 < v < 0.51)
     is_0 = lambda v: v < 0.01
     wmin = kwargs["weights_minimum"]
-    return is_half(wmin) or is_0(wmin) or kwargs["weights_mode"] == "pred_entropy"
+    return is_0(wmin) or kwargs["weights_mode"] in {"pred_entropy", "pred_merged"}
+
 
 # def wmode_exclude_no_distil(**kwargs):
 #     return kwargs.get("weights_mode") not in {"pred_consistency", "pred_merged", "pred_entropy"} or (
 #         kwargs.get("sparse_start_after") < 50
 #         and not kwargs.get("no_distillation")
 #     )
+
+
+from prettytable import PrettyTable as pt
+
+
+def float2str(v):
+    if isinstance(v, float):
+        return "{:1.4f}".format(v)
+    return v
+
+
+def computation_changing_parameters(exp: Experiment, env, excluded=None):
+    if excluded is None:
+        excluded = set()
+    else:
+        excluded = set(excluded)
+    computations = list(exp.yield_computations(env.context()))
+    parameters = defaultdict(set)
+    for comp in computations:
+        for param, value in comp.parameters.items():
+            if param not in excluded:
+                parameters[param].add(float2str(value))
+                parameters[param].add(float2str(value))
+
+    changing_parameters = [pname for pname, value_set in parameters.items() if len(value_set) > 1]
+    processed = set()
+
+    pre_excluded = list(excluded)
+    tb = pt()
+    # Add headers
+    tb.field_names = ["ID"] + [p for p in pre_excluded] + changing_parameters
+    # Add rows
+    for comp in computations:
+        param_comb_id = tuple(float2str(comp.parameters[pname]) for pname in changing_parameters)
+        if param_comb_id in excluded:
+            continue
+        excluded.add(param_comb_id)
+        row = [int(comp.comp_name.rsplit("-", 1)[-1])]
+        for excl_param in pre_excluded:
+            row.append(comp.parameters[excl_param])
+        for param in changing_parameters:
+            row.append(comp.parameters[param])
+        tb.add_row(row)
+
+    print(tb)
 
 
 # def not_using_incomplete(**kwargs):
@@ -142,6 +205,7 @@ if __name__ == "__main__":
     constrained.add_constraints(no_distillation=no_distillation_filter)
     constrained.add_constraints(filter_nc_rr=filter_nc_rr)
     constrained.add_constraints(min_weight_only_for_entropy=min_weight_only_for_entropy)
+    # constrained.add_constraints(restrict_fn_absolute=restrict_fn_absolute)
 
     param_set.add_separator()
     param_set.add_parameters()
@@ -150,6 +214,9 @@ if __name__ == "__main__":
 
     param_set.add_separator()
     param_set.add_parameters(weights_minimum=[0.1])
+
+    param_set.add_separator()
+    param_set.add_parameters(weights_consistency_fn=["absolute"])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
@@ -160,6 +227,8 @@ if __name__ == "__main__":
 
     # Wrap it together as an experiment
     experiment = Experiment("monuseg-unet-hard", constrained, make_build_fn(**env_params))
+
+    computation_changing_parameters(experiment, environment, excluded={"monu_ms"})
 
     # Finally run the experiment
     environment.run(experiment)
