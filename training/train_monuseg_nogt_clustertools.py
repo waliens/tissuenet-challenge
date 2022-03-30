@@ -69,6 +69,8 @@ if __name__ == "__main__":
 
     param_set.add_separator()
     param_set.add_parameters(monu_ms=seeds[2:6])
+    param_set.add_separator()
+    param_set.add_parameters(monu_ms=seeds[6:])
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
