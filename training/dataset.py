@@ -608,16 +608,16 @@ def sizeof_fmt(num, suffix='B'):
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
 
-def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1, progress_fn=None):
+def predict_set(net, crops, device, in_trans, overlap=0, batch_size=8, n_jobs=1, worker_init_fn=None, progress_fn=None):
     if len(crops) == 0:
         return list()
     dataset = MultiCropsSet(crops, in_trans=in_trans, overlap=overlap)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                        num_workers=n_jobs, pin_memory=True, drop_last=False)
+                        num_workers=n_jobs, pin_memory=True, drop_last=False, worker_init_fn=worker_init_fn)
 
     tile_size = crops[0].tile_size
     n_bytes = len(dataset) * tile_size * tile_size * 4
-    print("> annot with cues needs approx {} of memory".format(sizeof_fmt(n_bytes)), flush=True)
+    print("> predicting for current set needs approx {} of memory".format(sizeof_fmt(n_bytes)), flush=True)
     all_ys = defaultdict(list)
     net.eval()
     for annot_ids, tile_ids, xs, ys, tiles in loader:
@@ -627,21 +627,30 @@ def predict_annotation_crops_with_cues(net, crops, device, in_trans=None, overla
         for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
             all_ys[annot_id].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
 
-    awcues = list()
+    all_preds = list()
     for i, crop in enumerate(crops):
         w, h = crop.width, crop.height
-        cue = np.zeros([h, w], dtype=np.float)
+        pred = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
         for tile_id, (x_off, y_off), y_pred in all_ys[crop.unique_identifier]:
-            cue[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
+            pred[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
             acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
-        cue /= acc
-        awcues.append(CropWithCue(crop, cue=cue))
+        pred /= acc
         del (all_ys[crop.unique_identifier])
+        all_preds.append(pred)
         if progress_fn is not None:
             progress_fn(i, len(crops))
 
-    return awcues
+    return all_preds
+
+
+def predict_crops_with_cues(net, crops, device, in_trans=None, overlap=0, batch_size=8, n_jobs=1, progress_fn=None):
+    return [
+        CropWithCue(crop, cue=pred)
+        for crop, pred in zip(crops, predict_set(
+                net, crops, device, in_trans=in_trans, overlap=overlap,
+                batch_size=batch_size, n_jobs=n_jobs, progress_fn=progress_fn))
+    ]
 
 
 class DatasetsGenerator(object):

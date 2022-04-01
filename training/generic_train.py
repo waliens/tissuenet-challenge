@@ -4,6 +4,7 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from pprint import pprint
+import random
 
 import torch
 import numpy as np
@@ -11,17 +12,17 @@ import numpy as np
 from clustertools import Computation
 from clustertools.storage import PickleStorage
 from cytomine import Cytomine
+from numpy.random import default_rng
 
 from sklearn import metrics
 from torch.nn import BCEWithLogitsLoss
 from torch.optim.adam import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, ConcatDataset, RandomSampler
 from torchvision.transforms import transforms
 
 from augment import get_aug_transforms, get_norm_transform
-from dataset import CropTrainDataset, predict_roi, predict_annotation_crops_with_cues, GraduallyAddMoreDataState, \
-    CropWithThresholdedCue
+from dataset import CropTrainDataset, GraduallyAddMoreDataState, \
+    CropWithThresholdedCue, predict_crops_with_cues, predict_set
 from segpc import SegpcDatasetGenerator
 from threshold_optimizer import Thresholdable, thresh_exhaustive_eval
 from monuseg import MonusegDatasetGenerator
@@ -42,13 +43,13 @@ def vstack(*args):
     return np.vstack([out, *args[i:]])
 
 
-
 def get_random_init_fn(seed):
-    def random_init():
+    def random_init(modifier=0):
         import numpy as np
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed + 42)
-        np.random.seed(seed + 83)
+        torch.manual_seed(seed + modifier)
+        torch.cuda.manual_seed(seed + modifier)
+        np.random.seed(seed + modifier)
+        random.seed(seed + modifier)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     return random_init
@@ -82,10 +83,6 @@ def torange0_1(t):
     return t / 255.0
 
 
-def worker_init(tid):
-    from PIL import ImageFile
-    ImageFile.LOAD_TRUNCATED_IMAGES = False
-
 
 def save_cues(path, crops_with_cues):
     os.makedirs(path, exist_ok=True)
@@ -93,23 +90,15 @@ def save_cues(path, crops_with_cues):
         io.imsave(os.path.join(path, crop.crop.annotation.originalFilename), crop.cue)
 
 
-def determine_optimal_threshold(calibration_list, dataset, model, args, device):
+def determine_optimal_threshold(calibration_list, model, args, device, worker_init_fn=None, progress_fn=None):
+    masks = predict_set(model, calibration_list, device, get_norm_transform(), overlap=args.tile_overlap, batch_size=args.batch_size,
+                        n_jobs=args.n_jobs, worker_init_fn=worker_init_fn, progress_fn=progress_fn)
     all_y_pred, all_y_true = np.array([]), np.array([])
-    for calibration_roi in calibration_list:
-        y_pred, y_true = predict_roi(
-            calibration_roi,
-            dataset.roi_foregrounds(calibration_roi),
-            model, device,
-            in_trans=get_norm_transform(),
-            batch_size=args.batch_size,
-            tile_size=args.tile_size,
-            overlap=args.tile_overlap,
-            n_jobs=args.n_jobs,
-            zoom_level=args.zoom_level
-        )
+    for crop, y_pred in zip(calibration_list, masks):
+        _, y_true, _, _, _ = crop.crop_and_mask()
+        y_true = np.asarray(y_true).astype(np.uint8) / 255
         all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
         all_y_true = np.hstack([all_y_true, y_true.flatten()])
-
     th_opt = Thresholdable(all_y_true, all_y_pred)
     thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
     best_idx = np.argmax(dices)
@@ -182,10 +171,9 @@ def main(argv, computation=None):
         parser.add_argument("-s", "--save_path", dest="save_path",
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-dtm", "--distil_target_mode", dest="distil_target_mode", help="in {'soft', 'hard_dice'}", default="soft")
-        parser.add_argument("--n_calibration", dest="n_calibration", type=int, default=1)
+        parser.add_argument("--n_validation", dest="n_validation", type=int, default=0)
         parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
-        pprint(vars(args))
 
         if args.no_groundtruth and args.sparse_start_after == -1:
             raise ValueError("no ground truth experiment should start adding sparse data after first epoch")
@@ -193,7 +181,21 @@ def main(argv, computation=None):
         if args.no_groundtruth and args.no_distillation:
             raise ValueError("cannot exclude ground truth and distillation at the same time")
 
-        get_random_init_fn(args.rseed)()
+        if args.rseed == 42:
+            if args.dataset == "monuseg":
+                args.rseed = args.monuseg_missing_seed
+            elif args.dataset == "segpc":
+                args.rseed = args.segpc_missing_seed
+
+        pprint(vars(args))
+
+        random_init_fn = get_random_init_fn(args.rseed)
+        random_init_fn()
+
+        def worker_init(wid):
+            from PIL import ImageFile
+            ImageFile.LOAD_TRUNCATED_IMAGES = False
+            random_init_fn(wid)
 
         os.makedirs(args.save_path, exist_ok=True)
         os.makedirs(args.data_path, exist_ok=True)
@@ -214,10 +216,11 @@ def main(argv, computation=None):
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
-        mk_sched = partial(ReduceLROnPlateau, mode='min', factor=args.lr_sched_factor, patience=args.lr_sched_patience,
-                           threshold=0.005, threshold_mode="abs", cooldown=args.lr_sched_cooldown,
-                           min_lr=args.lr * (args.lr_sched_factor ** 5), verbose=True)
-        scheduler = mk_sched(optimizer)
+        # mk_sched = partial(ReduceLROnPlateau, mode='min', factor=args.lr_sched_factor,
+        #                    patience=args.lr_sched_patience, threshold=0.005, threshold_mode="abs",
+        #                    cooldown=args.lr_sched_cooldown, min_lr=args.lr * (args.lr_sched_factor ** 5),
+        #                    verbose=True)
+        # scheduler = mk_sched(optimizer)
 
         loss_fn = {
             "dice": DiceWithLogitsLoss(reduction="mean"),
@@ -239,23 +242,23 @@ def main(argv, computation=None):
 
         if args.dataset == "thyroid":
             dataset = ThyroidDatasetGenerator(args.data_path, args.tile_size, args.zoom_level,
-                                              n_calibrate=args.n_calibration)
+                                              n_validation=args.n_validation)
         elif args.dataset == "monuseg":
             dataset = MonusegDatasetGenerator(args.data_path, args.tile_size,
                                               missing_seed=args.monuseg_missing_seed,
                                               remove_ratio=args.monuseg_remove_ratio,
                                               n_complete=args.monuseg_n_complete,
-                                              n_calibrate=args.n_calibration)
+                                              n_validation=args.n_validation)
         elif args.dataset == "segpc":
             dataset = SegpcDatasetGenerator(args.data_path, args.tile_size,
                                             missing_seed=args.segpc_missing_seed,
                                             remove_ratio=args.segpc_remove_ratio,
                                             n_complete=args.segpc_n_complete,
-                                            n_calibrate=args.n_calibration)
+                                            n_validation=args.n_validation)
         else:
             raise ValueError("Unknown dataset '{}'".format(args.dataset))
 
-        incomplete_list, complete_list, val_set_list, calibration_list = dataset.sets()
+        incomplete_list, complete_list, test_list, validation_list = dataset.sets()
 
         # gradual more data
         add_data_state = GraduallyAddMoreDataState(
@@ -283,20 +286,27 @@ def main(argv, computation=None):
 
         print("Dataset")
         print("Size: ")
-        print("- complete   : {}".format(len(complete_list)))
+        print("- labeled    : {}".format(len(complete_list)))
         print("- sparse     : {}".format(len(incomplete_list)))
         print("- both (bef) : {}".format(len(complete_list) + len(incomplete_list)))
-        print("- start (improved) sparse after epoch {}".format(args.sparse_start_after))
+        print("- validation : {}".format(len(validation_list)))
+        print("- test       : {}".format(len(test_list)))
+        print("- warm-up until epoch {}".format(args.sparse_start_after))
 
         results = {
             "train_losses": [],
-            "val_losses": [],
-            "val_dice": [],
-            "val_soft_dice": [],
-            "val_metrics": [],
-            "save_path": [],
-            "thresholds": [],
-            "threshold": []
+            "test_loss": [],
+            "test_hard_dice": [],
+            "test_roc_auc": [],
+            "test_soft_dice": [],
+            "cal_threshold": [],
+            "cal_hard_dice": [],
+            "test_pxl_self_hard_dice": [],
+            "test_pxl_threshold": [],
+            "test_pxl_hard_dice": [],
+            # "test_pxl_roc_auc": [],
+            # "test_pxl_cm": [],
+            "save_path": []
         }
 
         for e in range(args.epochs):
@@ -335,81 +345,110 @@ def main(argv, computation=None):
                          i + 1, args.iter_per_epoch if args.iter_per_epoch > 0 else len(concat_dataset) / args.batch_size)
 
             unet.eval()
-            # validation
-            val_losses = np.zeros(len(val_set_list), dtype=np.float)
-            val_roc_auc = np.zeros(len(val_set_list), dtype=np.float)
-            val_dice = np.zeros(len(val_set_list), dtype=np.float)
+
+            # determine optimal threshold (if val set on the val set, otherwise on the complete set)
+            has_validation_set = len(validation_list) > 0
+            cal_threshold, cal_hard_dice = determine_optimal_threshold(
+                validation_list if has_validation_set else complete_list,
+                unet, args, device,
+                worker_init_fn=worker_init,
+                progress_fn=partial(progress, computation,
+                                    progress_epoch_start + 2 * (progress_epoch_end - progress_epoch_start) / 8,
+                                    progress_epoch_start + 3 * (progress_epoch_end - progress_epoch_start) / 8))
 
             print("------------------------------")
-            print("Eval at epoch {}:".format(e))
+            print("Eval on test set at epoch {}:".format(e))
+            # test set
+            test_losses = np.zeros(len(test_list), dtype=float)
+            test_roc_auc = np.zeros(len(test_list), dtype=float)
+            test_hard_dice = np.zeros(len(test_list), dtype=float)
+            test_soft_dice = np.zeros(len(test_list), dtype=float)
 
             all_y_pred, all_y_true = np.array([]), np.array([])
             no_fg_counter = 0
-            for i, roi in enumerate(val_set_list):
-                with torch.no_grad():
-                    y_pred, y_true = predict_roi(
-                        roi, dataset.roi_foregrounds(roi), unet, device,
-                        in_trans=get_norm_transform(),
-                        batch_size=args.batch_size,
-                        tile_size=args.tile_size,
-                        overlap=args.tile_overlap,
-                        n_jobs=args.n_jobs,
-                        zoom_level=args.zoom_level
-                    )
+            test_preds = predict_set(
+                unet, test_list, device, in_trans=get_norm_transform(),
+                overlap=args.tile_overlap, batch_size=args.batch_size,
+                n_jobs=args.n_jobs, worker_init_fn=worker_init,
+                progress_fn=partial(progress, computation,
+                                    progress_epoch_start + 3 * (progress_epoch_end - progress_epoch_start) / 8,
+                                    progress_epoch_start + 5 * (progress_epoch_end - progress_epoch_start) / 8))
 
-                all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
-                all_y_true = np.hstack([all_y_true, y_true.flatten()])
+            for i, (crop, y_pred) in enumerate(zip(test_list, test_preds)):
+                _, y_true, _, _, _ = crop.crop_and_mask()
+                y_true = np.asarray(y_true) / 255
 
-                val_losses[i] = metrics.log_loss(y_true.flatten(), y_pred.flatten(), labels=[0, 1])
+                flat_pred = y_pred.flatten()
+                flat_true = y_true.flatten()
+                all_y_pred = np.hstack([all_y_pred, flat_pred])
+                all_y_true = np.hstack([all_y_true, flat_true])
+
+                test_losses[i] = metrics.log_loss(flat_true, flat_pred, labels=[0, 1])
                 if np.count_nonzero(y_true) == 0:
                     no_fg_counter += 1
-                    val_roc_auc[i] = 0
+                    test_roc_auc[i] = 0
                 else:
-                    val_roc_auc[i] = metrics.roc_auc_score(y_true.flatten(), y_pred.flatten(), labels=[0, 1])
-                val_dice[i] = soft_dice_coefficient(y_true, y_pred)
+                    test_roc_auc[i] = metrics.roc_auc_score(flat_true, flat_pred, labels=[0, 1])
+                test_soft_dice[i] = soft_dice_coefficient(y_true, y_pred)
+                curr_th_opt = Thresholdable(flat_true, flat_pred)
+                test_hard_dice[i] = curr_th_opt.eval(cal_threshold)
 
                 progress(computation,
-                         progress_epoch_start + (progress_epoch_end - progress_epoch_start) / 8,
-                         progress_epoch_start + 3 * (progress_epoch_end - progress_epoch_start) / 8,
-                         i + 1, len(val_set_list))
+                         progress_epoch_start + 5 * (progress_epoch_end - progress_epoch_start) / 8,
+                         progress_epoch_start + 6 * (progress_epoch_end - progress_epoch_start) / 8,
+                         i + 1, len(test_list))
 
-            val_loss = np.mean(val_losses)
-            roc_auc = np.mean(val_roc_auc) * len(val_set_list) / (len(val_set_list) - no_fg_counter)
+            # roc, loss, hard_dice, soft_dice
+            results["test_loss"].append(np.mean(test_losses))
+            results["test_hard_dice"].append(np.mean(test_hard_dice))
+            results["test_roc_auc"].append(np.mean(test_roc_auc) * len(test_list) / (len(test_list) - no_fg_counter))
+            results["test_soft_dice"].append(np.mean(test_soft_dice))
 
-            th_opt = Thresholdable(all_y_true, all_y_pred)
-            thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
-            results["thresholds"].append((thresholds, dices))
-            best_idx = np.argmax(dices)
-            threshold, dice = thresholds[best_idx], dices[best_idx]
-            cm = metrics.confusion_matrix(all_y_true.astype(np.uint8), (all_y_pred.flatten() > threshold).astype(np.uint8))
+            results["cal_threshold"].append(cal_threshold)
+            results["cal_hard_dice"].append(cal_hard_dice)
+
+            # stats over all pixels
+            pxl_th_opt = Thresholdable(all_y_true, all_y_pred)
+            self_thresholds, self_dices = thresh_exhaustive_eval(pxl_th_opt, eps=args.th_step)
+            # results["thresholds"].append((self_thresholds, self_dices))
+            best_idx = np.argmax(self_dices)
+            self_threshold, self_dice = self_thresholds[best_idx], self_dices[best_idx]
+            results["test_pxl_self_hard_dice"].append(self_dice)
+            results["test_pxl_threshold"].append(self_threshold)
+
+            pxl_hard_dice = pxl_th_opt.eval(cal_threshold)
+            results["test_pxl_hard_dice"].append(pxl_hard_dice)
+            # pxl_roc_auc = metrics.roc_auc_score(all_y_true, all_y_pred, labels=[0, 1])
+            # results["test_pxl_roc_auc"].append(pxl_roc_auc)
+            # cm = metrics.confusion_matrix(all_y_true.astype(np.uint8), (all_y_pred > cal_threshold).astype(np.uint8))
+            # results["test_pxl_cm"].append(cm)
+
             del all_y_pred, all_y_true
-            cnt = np.sum(cm)
-            soft_dice = np.mean(val_dice)
-            print("> val_loss : {:1.5f}".format(val_loss))
-            print("> roc_auc  : {:1.5f}".format(roc_auc))
-            print("> dice     : {:1.5f}".format(dice))
-            print("> soft dice: {:1.5f}".format(soft_dice))
-            print("CM at {:0.4f} threshold".format(threshold))
-            print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
-            print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
+
+            print("                Avg    Pxl ")
+            print("> test_loss : {:1.5f}".format(results["test_loss"][-1]))
+            print("> roc_auc   : {:1.5f}".format(results["test_roc_auc"][-1])) #, results["test_pxl_roc_auc"][-1]))
+            print("> dice      : {:1.5f} {:1.5f}".format(results["test_hard_dice"][-1], results["test_pxl_hard_dice"][-1]))
+            print("> soft dice : {:1.5f}".format(results["test_soft_dice"][-1]))
+            # cnt = np.sum(cm)
+            # print("CM at {:0.4f} threshold".format(cal_threshold))
+            # print("> {:3.2f}%  {:3.2f}%".format(100 * cm[0, 0] / cnt, 100 * cm[0, 1] / cnt))
+            # print("> {:3.2f}%  {:3.2f}%".format(100 * cm[1, 0] / cnt, 100 * cm[1, 1] / cnt))
             if args.sparse_start_after <= e:
                 if args.no_distillation:
                     incomplete = dataset.iterable_to_dataset(add_data_state.get_next(), **trans_dict)
                 else:
                     print("------------------------------")
                     print("Improve sparse dataset (after epoch {})".format(args.sparse_start_after))
-                    new_crops = predict_annotation_crops_with_cues(
+                    new_crops = predict_crops_with_cues(
                         unet, add_data_state.get_next(), device, in_trans=get_norm_transform(),
                         overlap=args.tile_overlap, batch_size=args.batch_size, n_jobs=args.n_jobs,
                         progress_fn=partial(progress, computation,
-                                            progress_epoch_start + 3 * (progress_epoch_end - progress_epoch_start) / 8,
-                                            progress_epoch_start + 7 * (progress_epoch_end - progress_epoch_start) / 8))
+                                            progress_epoch_start + 7 * (progress_epoch_end - progress_epoch_start) / 8,
+                                            progress_epoch_start + 8 * (progress_epoch_end - progress_epoch_start) / 8))
                     if args.distil_target_mode == 'hard_dice':
-                        if len(calibration_list) == 0:
-                            raise ValueError("hard_dice requires setting a positive number of calibration images")
-                        calibrated_thresh, calibrated_dice = determine_optimal_threshold(calibration_list, dataset, unet, args, device)
-                        print("> calibrated (thresh, dice): {}, {}".format(calibrated_thresh, calibrated_dice))
-                        new_crops = [CropWithThresholdedCue(crop, calibrated_thresh * 255) for crop in new_crops]
+                        print("> calibrated (thresh, dice): {}, {}".format(cal_threshold, cal_hard_dice))
+                        new_crops = [CropWithThresholdedCue(crop, cal_threshold * 255) for crop in new_crops]
                     if args.save_cues:
                         cue_save_path = os.path.join(args.data_path, "cues", os.environ.get("SLURM_JOB_ID"), str(e))
                         print("save cues for epoch {} at '{}'".format(e, cue_save_path))
@@ -420,21 +459,18 @@ def main(argv, computation=None):
                     incomplete = dataset.iterable_to_dataset(new_crops, **trans_dict)
                     print("------------------------------")
 
-            # reset scheduler when adding new samples
-            if args.sparse_start_after == e:
-                scheduler = mk_sched(optimizer)
-            else:
-                scheduler.step(dice)
+            # # reset scheduler when adding new samples
+            # if args.sparse_start_after == e:
+            #     scheduler = mk_sched(optimizer)
+            # else:
+            #     scheduler.step(dice)
 
-            filename = "{}_e_{}_val_{:0.4f}_roc_{:0.4f}_z{}_s{}.pth".format(datetime.now().timestamp(), e, val_loss, roc_auc, args.zoom_level, args.tile_size)
+            filename = "{}_e_{}_test_dice_{:0.4f}_test_roc_{:0.4f}_z{}_s{}.pth".format(
+                datetime.now().timestamp(), e, results["test_hard_dice"][-1], results["test_roc_auc"][-1],
+                args.zoom_level, args.tile_size)
             torch.save(unet.state_dict(), os.path.join(args.save_path, filename))
 
-            results["val_losses"].append(val_loss)
-            results["val_dice"].append(dice)
-            results["val_soft_dice"].append(soft_dice)
-            results["val_metrics"].append(roc_auc)
             results["save_path"].append(filename)
-            results["threshold"].append(threshold)
 
         return results
 
@@ -458,7 +494,7 @@ class TrainComputation(Computation):
             lr_sched_cooldown=3, sparse_data_max=1.0, sparse_data_rate=1.0, no_distillation=False,
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
             weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
-            monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_calibration=0, segpc_rr=0.0, segpc_ms=42,
+            monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_validation=0, segpc_rr=0.0, segpc_ms=42,
             segpc_nc=298):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
@@ -501,7 +537,7 @@ class TrainComputation(Computation):
                 "--iter_per_epoch", str(iter_per_epoch),
                 "--th_step", str(self._th_step),
                 "--distil_target_mode", str(distil_target_mode),
-                "--n_calibration", str(n_calibration),
+                "--n_validation", str(n_validation),
                 "--segpc_rr", str(segpc_rr),
                 "--segpc_ms", str(segpc_ms),
                 "--segpc_nc", str(segpc_nc)]
