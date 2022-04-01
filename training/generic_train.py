@@ -83,7 +83,6 @@ def torange0_1(t):
     return t / 255.0
 
 
-
 def save_cues(path, crops_with_cues):
     os.makedirs(path, exist_ok=True)
     for crop in crops_with_cues:
@@ -212,7 +211,7 @@ def main(argv, computation=None):
                                          consistency_fn=args.weights_consistency_fn,
                                          consistency_neigh=args.weights_neighbourhood,
                                          min_weight=args.weights_minimum,
-                                         logits=True, device=device)
+                                         logits=True, device=device, do_rescale=True)
 
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
