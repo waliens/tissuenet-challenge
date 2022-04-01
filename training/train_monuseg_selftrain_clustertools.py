@@ -2,7 +2,8 @@ import itertools
 import os
 from collections import defaultdict
 
-from clustertools import set_stdout_logging, ParameterSet, Experiment, CTParser, ConstrainedParameterSet
+from clustertools import set_stdout_logging, ParameterSet, Experiment, CTParser, ConstrainedParameterSet, \
+    PrioritizedParamSet
 from clustertools.storage import PickleStorage
 from cytomine import Cytomine
 
@@ -93,9 +94,9 @@ if __name__ == "__main__":
     os.makedirs(namespace.save_path, exist_ok=True)
 
     param_set = ParameterSet()
-
+    seeds = [13315092, 21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575]
     param_set.add_parameters(dataset="monuseg")
-    param_set.add_parameters(monu_ms=[13315092, 21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575])
+    param_set.add_parameters(monu_ms=seeds)
     param_set.add_parameters(monu_rr=[0.9])
     param_set.add_parameters(monu_nc=[2])
     param_set.add_parameters(iter_per_epoch=100)
@@ -125,6 +126,10 @@ if __name__ == "__main__":
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
 
+    prioritized = PrioritizedParamSet(constrained)
+    for seed in seeds:
+        prioritized.prioritize('monu_ms', seed)
+
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
             return TrainComputation(exp_name, comp_name, **kwargs, context=context, storage_factory=storage_factory)
@@ -132,7 +137,7 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("monuseg-unet-selftrain", constrained, make_build_fn(**env_params))
+    experiment = Experiment("monuseg-self-train", prioritized, make_build_fn(**env_params))
 
     computation_changing_parameters(experiment, environment, excluded={"monu_ms"})
 
