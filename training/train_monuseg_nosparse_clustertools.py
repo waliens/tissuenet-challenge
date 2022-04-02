@@ -33,7 +33,7 @@ if __name__ == "__main__":
     param_set.add_parameters(lr=0.001)
     param_set.add_parameters(init_fmaps=8)
     param_set.add_parameters(zoom_level=0)
-    param_set.add_parameters(rseed=seeds)
+    param_set.add_parameters(rseed=42)
     param_set.add_parameters(loss="bce")
     param_set.add_parameters(aug_hed_bias_range=0.025)
     param_set.add_parameters(aug_hed_coef_range=0.025)
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     # Wrap it together as an experiment
     experiment = Experiment("monuseg-baseline-nosparse", param_set, make_build_fn(**env_params))
 
-    computation_changing_parameters(experiment, environment, excluded={"rseed"})
+    computation_changing_parameters(experiment, environment, excluded={"monu_ms"})
 
     # Finally run the experiment
     environment.run(experiment)
