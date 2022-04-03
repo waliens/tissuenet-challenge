@@ -19,7 +19,7 @@ if __name__ == "__main__":
     os.makedirs(namespace.save_path, exist_ok=True)
 
     param_set = ParameterSet()
-    seeds = [3585495251, 2837631045, 3477283220, 3835754128, 301061268, 3329570258, 2427680196, 970554809, 3657022364, 697541748]
+    seeds = [13315092, 21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575]
     epochs = 20
     param_set.add_parameters(dataset="monuseg")
     param_set.add_parameters(monu_ms=seeds)
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     param_set.add_parameters(lr=0.001)
     param_set.add_parameters(init_fmaps=8)
     param_set.add_parameters(zoom_level=0)
-    param_set.add_parameters(rseed=seeds)
+    param_set.add_parameters(rseed=42)
     param_set.add_parameters(loss="bce")
     param_set.add_parameters(aug_hed_bias_range=0.025)
     param_set.add_parameters(aug_hed_coef_range=0.025)
