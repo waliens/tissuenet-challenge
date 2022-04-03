@@ -19,7 +19,7 @@ if __name__ == "__main__":
     os.makedirs(namespace.save_path, exist_ok=True)
 
     param_set = ParameterSet()
-    seeds = [3585495251, 2837631045, 3477283220, 3835754128, 301061268, 3329570258, 2427680196, 970554809, 3657022364, 697541748]
+    seeds = [13315092, 21081788, 26735830, 35788921, 56755036, 56882282, 65682867, 91090292, 93410762, 96319575]
     param_set.add_parameters(dataset="monuseg")
     param_set.add_parameters(monu_ms=seeds)
     param_set.add_parameters(monu_rr=0.9)
