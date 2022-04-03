@@ -3,7 +3,7 @@ from torch import nn
 
 
 class WeightComputer(nn.Module):
-    def __init__(self, mode="constant", constant_weight=1.0, consistency_fn=None, consistency_neigh=1, logits=False, device="cpu", min_weight=0.0):
+    def __init__(self, mode="constant", constant_weight=1.0, consistency_fn=None, consistency_neigh=1, logits=False, device="cpu", min_weight=0.0, do_rescale=False):
         """
         :param mode: in {'constant', 'balance_gt', 'pred_entropy', 'pred_consistency', 'pred_merged'}
         :param constant_weight:
@@ -19,6 +19,7 @@ class WeightComputer(nn.Module):
         self._is_logits = logits
         self._min_weight = torch.tensor(min_weight, device=device)
         self._device = device
+        self._do_rescale = do_rescale
         if consistency_neigh != 1 and consistency_neigh != 2:
             raise ValueError("invalid consistency neighbourhood {}".format(consistency_neigh))
         if ("consistency" in self._mode or "multi" in self._mode) and consistency_fn is None:
@@ -28,6 +29,8 @@ class WeightComputer(nn.Module):
         weights = torch.maximum(self._weight(y_d, y_gt), y_gt)
         if self._mode not in {"balance_gt", "constant"}:
             weights = (1 - self._min_weight) * weights + self._min_weight
+        if self._do_rescale:
+            weights /= torch.mean(weights, dim=[2, 3], keepdim=True)
         if apply_weights is not None:
             if apply_weights.ndim == 1 and apply_weights.size()[0] != weights.size()[0]:
                 raise ValueError("apply weights vector does not have the correct dimensions {}".format(apply_weights.size()))
@@ -48,7 +51,6 @@ class WeightComputer(nn.Module):
             ratio = torch.mean(y_gt, dim=[2, 3], keepdim=True)
             ratio[ratio >= 1] = 0  # handle case of no background
             w = (1 - y_gt) * ratio / (1 - ratio)
-            w[w > 1.0] = 1.0  # don't overweight background even if they are minority
             return w
         elif self._mode == "pred_entropy":
             return self._entropy(y_d)

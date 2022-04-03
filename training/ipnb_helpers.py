@@ -1,40 +1,37 @@
 import os
+from collections import defaultdict
+from itertools import product
 
 import numpy as np
 from clustertools import build_datacube
+from clustertools.experiment import load_computation
+from clustertools.storage import PickleStorage
 from clustertools.parameterset import build_parameter_set, CartesianParameterSet
 
 from plot_helpers import get_metric_without_none
 
 
-def cube_key(cube, *params):
-    if len(params) == 0:
-        params = list(cube.metadata.keys()) + list(cube.domain.keys())
-    return tuple(map(lambda p: str(cube.metadata[p]), params))
+def cube_key(comp_params, *params):
+    return tuple(map(lambda p: str(comp_params[p]), params))
 
 
-def create_comp_index(cube, param_set):
-    varying = sorted(cube.domain.keys())
-    comp_with_index = {k: v for k, v in param_set}
-    remaining_comp = set(comp_with_index.keys())
+def build_domain_and_metadata(comp_params):
+    dd = defaultdict(set)
+    for curr_params in comp_params:
+        for p, v in curr_params.items():
+            dd[p].add(v)
+    return {k: list(v) for k, v in dd.items() if len(v) > 1}, {k: list(v)[0] for k, v in dd.items() if len(v) == 1}
+
+
+def create_comp_index(exp_map):
+    exp_domain, exp_metadata = build_domain_and_metadata([v[0] for v in exp_map.values()])
+    varying = sorted(exp_domain.keys())
     cube_index = dict()
 
-    for v, inner_cube in cube.iter_dimensions(*varying):
-        if inner_cube.diagnose()["Missing ratio"] > 0:
-            continue
+    for comp_idx, (comp_params, comp_results) in exp_map.items():
+        cube_index[cube_key(comp_params, *varying)] = comp_idx
 
-        selected_idx = None
-        for comp_idx in remaining_comp:
-            if all([inner_cube.metadata[param_name] == str(comp_with_index[comp_idx][param_name]) for param_name in
-                    varying]):
-                selected_idx = comp_idx
-                break
-        if selected_idx is None:
-            raise ValueError("'{}' not found".format(v))
-        remaining_comp.remove(selected_idx)
-        cube_index[cube_key(inner_cube, *varying)] = selected_idx
-
-    return varying, cube_index
+    return varying, (exp_domain, exp_metadata), cube_index
 
 
 def get_metric_by_comp_index(cube, metric, reeval_datacube, index_params, comp_index):
@@ -56,40 +53,45 @@ def base_parameter_set(param_set):
     return param_set
 
 
+def load_indexes(exp_name):
+    storage = PickleStorage(exp_name)
+    result_folder = os.path.join(storage.folder, "results")
+    return [fname.split(".")[0].rsplit("-")[-1] for fname in os.listdir(result_folder)]
+
+
 class ExperimentReader(object):
-    def __init__(self, exp_name, reeval_exp_name, *seed_params):
-        self._cube = build_datacube(exp_name)
-        self._param_set = build_parameter_set(exp_name)
-        self._reeval_cube = build_datacube(reeval_exp_name)
-        self._index_params, self._cube_index = create_comp_index(self._cube, base_parameter_set(self._param_set))
-        self._seed_params = set(seed_params)
+    def __init__(self, exp_name, reeval_exp_name):
+        exp_indexes = load_indexes(exp_name)
+        reeval_exp_indexes = load_indexes(reeval_exp_name)
+        self._exp_map = {idx: load_computation(exp_name, int(idx)) for idx in exp_indexes}
+        self._reeval_map = {idx: load_computation(reeval_exp_name, int(idx)) for idx in reeval_exp_indexes}
+        self._exp_to_reeval_index = {str(p["comp_index"]): idx for idx, (p, r) in self._reeval_map.items()}
+        self._index_params, (self._exp_domain, self._exp_metadata), self._params_to_exp_index = create_comp_index(self._exp_map)
 
     def _get_metric(self, metric, src="reeval", **params):
-        try:
-            param_slice = self._cube(**params)
-            valid_cubes = list()
-            other_params = set(param_slice.parameters).difference(self._seed_params)
-            metric_value = None
-            for in_values, in_cube in param_slice.iter_dimensions(*other_params):
-                if in_cube.diagnose()["Missing ratio"] >= 1.0:
-                    continue
-                valid_cubes.append({k: v for k, v in zip(other_params, in_values)})
-                if src == "reeval":
-                    metric_value = get_metric_by_comp_index(in_cube, metric, self._reeval_cube, self._index_params,
-                                                            self._cube_index)
-                else:
-                    metric_value = get_metric_without_none(in_cube, metric)
-            if len(valid_cubes) > 1:
-                print(other_params, "for", params)
-                raise ValueError("more than one param comb found for metric {}".format(metric))
-            if metric_value is None:
-                return None
-
-            return metric_value
-        except IndexError:
+        domain_keys = set(self._exp_domain.keys())
+        param_keys = set(params.keys())
+        missing_params = domain_keys.difference(param_keys)
+        non_varying = param_keys.difference(domain_keys)
+        if any([str(self._exp_metadata[p]) != params[p] for p in non_varying]):
             return None
-        except KeyError:
+        results = list()
+        for m_values in product(*[self._exp_domain[p] for p in missing_params]):
+            all_params = {**params, **{mp: mv for mp, mv in zip(missing_params, m_values)}}
+            key = cube_key(all_params, *self._index_params)
+            if key not in self._params_to_exp_index:
+                continue
+            exp_index = self._params_to_exp_index[key]
+            if src != "reeval":
+                results.append(self._exp_map[exp_index][1][metric])
+            elif exp_index not in self._exp_to_reeval_index:
+                continue
+            else:
+                reeval_index = self._exp_to_reeval_index[exp_index]
+                results.append(self._reeval_map[reeval_index][1][metric])
+        if len(results) == 0:
             return None
+        return np.array(results)
 
     def get_reeval_metric(self, metric, **params):
         return self._get_metric(metric, **params)
@@ -113,7 +115,12 @@ def get_row_header(mode, **params):
         return "$" + "{}".format(float(params["weights_minimum"])) + \
             "$ & $" + "{}".format(int(params["weights_neighbourhood"])) + \
             "$ & $" + "{}".format("|\\cdot|" if params["weights_consistency_fn"] == "absolute" else "\\cdot^2") + "$"
-    return "& &"
+    elif len(params) == 0:
+        return "\\multicolumn{3}{|c|}{All data}"
+    elif params.get("no_distillation", "False") == "True":
+        return "\\multicolumn{3}{|c|}{No self-training}"
+    else:
+        return "& &"
 
 
 def get_super_row(current_mode, n_columns):
@@ -123,7 +130,7 @@ def get_super_row(current_mode, n_columns):
         "pred_entropy": "Entropy - $w_{\\text{min}}$",
         "pred_consistency": "Consistency - $\\eta, c(y_1, y_2)$",
         "pred_merged": "Merged - $w_{\\text{min}}, \\eta, c(y_1, y_2)$",
-        "none": "No self-training"
+        "none": "Baselines"
     }[current_mode]
     return os.linesep.join(["\\hline", "\\multicolumn{" + str(n_columns) + "}{|l|}{" + name + "} \\\\", "\\hline"])
 
@@ -161,7 +168,7 @@ def plot_table(rows, columns, total_train_imgs):
 
     current_mode = None
     for row in rows:
-        if 'weights_mode' not in row or current_mode != row["weights_mode"]:
+        if row.get("weights_mode", "none") != current_mode:
             current_mode = row.get('weights_mode', 'none')
             print(get_super_row(current_mode, len(columns) + 3))
 

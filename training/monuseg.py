@@ -77,10 +77,10 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
 
 class MonusegDatasetGenerator(DatasetsGenerator):
     def __init__(self, data_path, tile_size, mask_folder="masks", image_folder="images", incomplete_folder="incomplete",
-                 complete_folder="complete", missing_seed=42, remove_ratio=0.0, n_complete=1, n_calibrate=0):
+                 complete_folder="complete", missing_seed=42, remove_ratio=0.0, n_complete=1, n_validation=0):
         self._missing_seed = missing_seed
         self._remove_ratio = remove_ratio
-        self._n_complete = n_complete + n_calibrate
+        self._n_complete = n_complete - n_validation
         self._data_path = os.path.join(data_path, "{}_{:0.4f}_{}".format(missing_seed, remove_ratio, n_complete))
         self._train_path = os.path.join(self._data_path, "train")
         self._test_path = os.path.join(self._data_path, "test")
@@ -89,7 +89,7 @@ class MonusegDatasetGenerator(DatasetsGenerator):
         self._incomplete_folder = incomplete_folder
         self._complete_folder = complete_folder
         self._tile_size = tile_size
-        self._n_calibrate = n_calibrate
+        self._n_validation = n_validation
 
         images = ImageInstanceCollection().fetch_with_filter("project", MONUSEG_PROJECT)
         annotations = AnnotationCollection(project=MONUSEG_PROJECT, showWKT=True, showMeta=True).fetch()
@@ -111,7 +111,9 @@ class MonusegDatasetGenerator(DatasetsGenerator):
     def sets(self):
         incomplete = self._crops(os.path.join(self._train_path, self._incomplete_folder))
         complete = self._crops(os.path.join(self._train_path, self._complete_folder))
-        return incomplete, complete[self._n_calibrate:], self._crops(self._test_path), complete[:self._n_calibrate]
+        np.random.shuffle(complete)
+        complete, validation = complete[self._n_validation:], complete[:self._n_validation]
+        return incomplete, complete, self._crops(self._test_path), validation
 
     def iterable_to_dataset(self, iterable, **kwargs):
         return CropTrainDataset(iterable, **kwargs)

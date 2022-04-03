@@ -67,6 +67,11 @@ if __name__ == "__main__":
     constrained.add_constraints(no_distillation=no_distillation_filter)
     constrained.add_constraints(min_weight_only_for_entropy=min_weight_only_for_entropy)
 
+    param_set.add_separator()
+    param_set.add_parameters(monu_ms=seeds[2:6])
+    param_set.add_separator()
+    param_set.add_parameters(monu_ms=seeds[6:])
+
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
             return TrainComputation(exp_name, comp_name, **kwargs, context=context, storage_factory=storage_factory)
