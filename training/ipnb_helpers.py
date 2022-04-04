@@ -34,17 +34,17 @@ def create_comp_index(exp_map):
     return varying, (exp_domain, exp_metadata), cube_index
 
 
-def get_metric_by_comp_index(cube, metric, reeval_datacube, index_params, comp_index):
-    metrics = list()
-    for _, in_cube in cube.iter_dimensions(*cube.domain.keys()):
-        key = cube_key(in_cube, *index_params)
-        if key not in comp_index:
-            continue
-        idx = str(comp_index[key])
-        if idx not in reeval_datacube.domain['comp_index']:
-            return None
-        metrics.append(reeval_datacube(comp_index=idx)(metric))
-    return np.array(metrics)
+# def get_metric_by_comp_index(cube, metric, reeval_datacube, index_params, comp_index):
+#     metrics = list()
+#     for _, in_cube in cube.iter_dimensions(*cube.domain.keys()):
+#         key = cube_key(in_cube, *index_params)
+#         if key not in comp_index:
+#             continue
+#         idx = str(comp_index[key])
+#         if idx not in reeval_datacube.domain['comp_index']:
+#             return None
+#         metrics.append(reeval_datacube(comp_index=idx)(metric))
+#     return np.array(metrics)
 
 
 def base_parameter_set(param_set):
@@ -60,15 +60,12 @@ def load_indexes(exp_name):
 
 
 class ExperimentReader(object):
-    def __init__(self, exp_name, reeval_exp_name):
+    def __init__(self, exp_name):
         exp_indexes = load_indexes(exp_name)
-        reeval_exp_indexes = load_indexes(reeval_exp_name)
         self._exp_map = {idx: load_computation(exp_name, int(idx)) for idx in exp_indexes}
-        self._reeval_map = {idx: load_computation(reeval_exp_name, int(idx)) for idx in reeval_exp_indexes}
-        self._exp_to_reeval_index = {str(p["comp_index"]): idx for idx, (p, r) in self._reeval_map.items()}
         self._index_params, (self._exp_domain, self._exp_metadata), self._params_to_exp_index = create_comp_index(self._exp_map)
 
-    def _get_metric(self, metric, src="reeval", **params):
+    def _get_metric(self, metric, **params):
         domain_keys = set(self._exp_domain.keys())
         param_keys = set(params.keys())
         missing_params = domain_keys.difference(param_keys)
@@ -82,22 +79,13 @@ class ExperimentReader(object):
             if key not in self._params_to_exp_index:
                 continue
             exp_index = self._params_to_exp_index[key]
-            if src != "reeval":
-                results.append(self._exp_map[exp_index][1][metric])
-            elif exp_index not in self._exp_to_reeval_index:
-                continue
-            else:
-                reeval_index = self._exp_to_reeval_index[exp_index]
-                results.append(self._reeval_map[reeval_index][1][metric])
+            results.append(self._exp_map[exp_index][1][metric])
         if len(results) == 0:
             return None
         return np.array(results)
 
-    def get_reeval_metric(self, metric, **params):
-        return self._get_metric(metric, **params)
-
     def get_metric(self, metric, **params):
-        return self._get_metric(metric, **params, src="original")
+        return self._get_metric(metric, **params)
 
 
 def get_row_header(mode, **params):
@@ -115,12 +103,14 @@ def get_row_header(mode, **params):
         return "$" + "{}".format(float(params["weights_minimum"])) + \
             "$ & $" + "{}".format(int(params["weights_neighbourhood"])) + \
             "$ & $" + "{}".format("|\\cdot|" if params["weights_consistency_fn"] == "absolute" else "\\cdot^2") + "$"
-    elif len(params) == 0:
-        return "\\multicolumn{3}{|c|}{All data}"
-    elif params.get("no_distillation", "False") == "True":
-        return "\\multicolumn{3}{|c|}{No self-training}"
+    elif "type" in params and params["type"] == "bl-upper":
+        return "\\multicolumn{3}{|c|}{$|\\mathcal{D}_s| = 0$}"
+    elif "type" in params and params["type"] == "bl-noself":
+        return "\\multicolumn{3}{|c|}{$\\mathcal{D}_l \cup \\mathcal{D}_s$}"
+    elif "type" in params and params["type"] == "bl-nosparse":
+        return "\\multicolumn{3}{|c|}{$\\mathcal{D}_l$ only}"
     else:
-        return "& &"
+        return params["type"] + "& &"
 
 
 def get_super_row(current_mode, n_columns):
@@ -138,8 +128,7 @@ def get_super_row(current_mode, n_columns):
 def get_column_headers(columns, total_train_img):
     rows_content = [
         ["\\multicolumn{3}{|c|}{$|\\mathcal{D}_l|/|\\mathcal{D}_s|$}"],
-        ["\\multicolumn{3}{|c|}{$\\rho$}"],
-        ["\\multicolumn{3}{|c|}{$|\\mathcal{D}_{cal}|$}"],
+        ["\\multicolumn{3}{|c|}{$\\rho$}"]
     ]
 
     for _, column in columns:
@@ -153,10 +142,8 @@ def get_column_headers(columns, total_train_img):
         if len(rrs) > 0:
             rr_key = rrs[0]
             rr = float(column[rr_key])
-        n_cal = int(column["n_calibration"])
-        rows_content[0].append("{}/{}".format(nc - n_cal, total_train_img - nc))
+        rows_content[0].append("{}/{}".format(nc, total_train_img - nc))
         rows_content[1].append("{:3d}\\%".format(int(rr * 100)))
-        rows_content[2].append(str(n_cal))
 
     return os.linesep.join([(" & ".join(row) + "\\\\") for row in rows_content])
 
