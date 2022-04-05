@@ -100,7 +100,7 @@ def get_row_header(mode, **params):
             "$ & \\multicolumn{2}{c|}{$" + \
             "{}".format("|\\cdot|" if params["weights_consistency_fn"] == "absolute" else "\\cdot^2")+"$}"
     elif mode == "pred_merged":
-        return "$" + "{}".format(float(params["weights_minimum"])) + \
+        return "$" + "{}".format(float(params.get("weights_minimum", "0"))) + \
             "$ & $" + "{}".format(int(params["weights_neighbourhood"])) + \
             "$ & $" + "{}".format("|\\cdot|" if params["weights_consistency_fn"] == "absolute" else "\\cdot^2") + "$"
     elif "type" in params and params["type"] == "bl-upper":
