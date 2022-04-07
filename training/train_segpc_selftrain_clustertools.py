@@ -43,6 +43,10 @@ def read_segpc_datasets(dir):
     return list(seeds), [float(f) for f in ratios], list(ncs), constraints
 
 
+def exclude_balance_hard(**kwargs):
+    return not kwargs.get("weights_mode") == "balance_gt"
+
+
 if __name__ == "__main__":
     set_stdout_logging()
     # Define the parameter set: the domain each variable can take
@@ -85,6 +89,7 @@ if __name__ == "__main__":
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(**segpc_constraints)
     constrained.add_constraints(weight_exclude=weight_exclude)
+    constrained.add_constraints(exclude_balance_hard=exclude_balance_hard)
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
