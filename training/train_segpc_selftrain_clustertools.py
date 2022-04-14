@@ -86,6 +86,9 @@ if __name__ == "__main__":
     param_set.add_parameters(weights_neighbourhood=[1, 2])
     param_set.add_parameters(distil_target_mode=["soft", "hard_dice"])
 
+    param_set.add_separator()
+    param_set.add_parameters(weights_mode="balance_gt_overall")
+
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(**segpc_constraints)
     constrained.add_constraints(weight_exclude=weight_exclude)

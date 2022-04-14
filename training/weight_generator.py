@@ -1,5 +1,41 @@
 import torch
+import numpy as np
 from torch import nn
+
+
+def count_gt_pixels(complete, incomplete):
+    """
+
+    Parameters
+    ----------
+    complete: iterable
+        complete images
+    incomplete: iterable
+        incomplete images
+
+    Returns
+    -------
+    gt: int
+        number of ground truth pixels
+    unlabeled: int
+        number of background pixels
+    ratio:
+        gt / unlabeled (potential pixel weight)
+    """
+    gt, unlabeled = 0, 0
+    for _type, images in [("complete", complete), ("incomplete", incomplete)]:
+        for image in images:
+            _, mask, _, _, _ = image.crop_and_mask()
+            n_pixels = np.prod(np.asarray(mask).shape)
+            if _type == "complete":
+                gt += n_pixels
+            else:
+                for v, c in zip(*np.unique(mask, return_counts=True)):
+                    if v == 0:
+                        unlabeled += c
+                    else:
+                        gt += c
+    return gt, unlabeled, gt / unlabeled
 
 
 class WeightComputer(nn.Module):

@@ -36,7 +36,7 @@ def weight_exclude(**kwargs):
     return (wmode_is_constant or wconstant_is_one) \
        and (kwargs.get("weights_mode") in {"pred_consistency", "pred_merged"} or
             (kwargs.get("weights_consistency_fn") == "quadratic" and kwargs.get("weights_neighbourhood") == 2)) \
-       and (kwargs.get("weights_mode") not in {"constant", "balance_gt", "pred_consistency"} or min_weight_is_zero) \
+       and (kwargs.get("weights_mode") not in {"constant", "balance_gt", "balance_gt_overall", "pred_consistency"} or min_weight_is_zero) \
        and (kwargs.get("weights_mode") not in {"pred_entropy", "pred_merged"} or not min_weight_is_zero)
 
 
@@ -122,6 +122,9 @@ if __name__ == "__main__":
     param_set.add_parameters(weights_minimum=[0.75, 0.5, 0.25, 0.1, 0.05, 0.01, 0.0])
     param_set.add_parameters(weights_neighbourhood=[1, 2])
     param_set.add_parameters(distil_target_mode=["soft", "hard_dice"])
+
+    param_set.add_separator()
+    param_set.add_parameters(weights_mode="balance_gt_overall")
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)

@@ -28,7 +28,7 @@ from threshold_optimizer import Thresholdable, thresh_exhaustive_eval
 from monuseg import MonusegDatasetGenerator
 from thyroid import ThyroidDatasetGenerator
 from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
-from weight_generator import WeightComputer
+from weight_generator import WeightComputer, count_gt_pixels
 from skimage import io
 
 
@@ -206,13 +206,6 @@ def main(argv, computation=None):
         unet.train()
         unet.to(device)
 
-        weights_on = args.loss == "bce" and (args.weights_mode != "constant" or args.weights_constant < 0.99)
-        weight_computer = WeightComputer(mode=args.weights_mode, constant_weight=args.weights_constant,
-                                         consistency_fn=args.weights_consistency_fn,
-                                         consistency_neigh=args.weights_neighbourhood,
-                                         min_weight=args.weights_minimum,
-                                         logits=True, device=device, do_rescale=True)
-
         optimizer = Adam(unet.parameters(), lr=args.lr)
         # stops after five decreases
         # mk_sched = partial(ReduceLROnPlateau, mode='min', factor=args.lr_sched_factor,
@@ -283,15 +276,6 @@ def main(argv, computation=None):
         else:
             sampler_fn = lambda ds: None
 
-        print("Dataset")
-        print("Size: ")
-        print("- labeled    : {}".format(len(complete_list)))
-        print("- sparse     : {}".format(len(incomplete_list)))
-        print("- both (bef) : {}".format(len(complete_list) + len(incomplete_list)))
-        print("- validation : {}".format(len(validation_list)))
-        print("- test       : {}".format(len(test_list)))
-        print("- warm-up until epoch {}".format(args.sparse_start_after))
-
         results = {
             "train_losses": [],
             "test_loss": [],
@@ -307,6 +291,42 @@ def main(argv, computation=None):
             # "test_pxl_cm": [],
             "save_path": []
         }
+
+        print("---- Weights strategy ----")
+        weights_mode = "constant" if args.weights_mode == "balance_gt_overall" else args.weights_mode
+        weights_on = args.loss == "bce" and (weights_mode != "constant" or args.weights_constant < 0.99)
+        print("-", "mode: '" + args.weights_mode + "' ({})".format("enabled" if weights_on else "disabled"))
+
+        weights_constant = args.weights_constant
+        if args.weights_mode == "balance_gt_overall":
+            _, _, gu_ratio = count_gt_pixels(complete_list, incomplete_list)
+            weights_constant = gu_ratio
+            results["gu_ratio"] = gu_ratio
+
+        print("- parameters:")
+        if weights_mode == "constant":
+            print("\t>", "C={:0.4f}".format(weights_constant))
+        elif weights_mode in {'pred_entropy', 'pred_consistency', 'pred_merged'}:
+            print("\t>", "w_min={:0.4f}".format(args.weights_minimum))
+        elif weights_mode in {'pred_consistency', 'pred_merged'}:
+            print("\t>", "neigh={:d}".format(args.weights_neighbourhood))
+            print("\t>", "cons_fn={}".format(args.weights_consistency_fn))
+
+        weight_computer = WeightComputer(mode=weights_mode, constant_weight=weights_constant,
+                                         consistency_fn=args.weights_consistency_fn,
+                                         consistency_neigh=args.weights_neighbourhood,
+                                         min_weight=args.weights_minimum,
+                                         logits=True, device=device, do_rescale=True)
+
+        print("---- Dataset ----")
+        print("Size: ")
+        print("- labeled    : {}".format(len(complete_list)))
+        print("- sparse     : {}".format(len(incomplete_list)))
+        print("- both (bef) : {}".format(len(complete_list) + len(incomplete_list)))
+        print("- validation : {}".format(len(validation_list)))
+        print("- test       : {}".format(len(test_list)))
+        print("- warm-up until epoch {}".format(args.sparse_start_after))
+
 
         for e in range(args.epochs):
             progress_epoch_start = e / args.epochs
