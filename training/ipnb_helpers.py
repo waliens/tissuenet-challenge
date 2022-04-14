@@ -84,6 +84,21 @@ class ExperimentReader(object):
             return None
         return np.array(results)
 
+    def get_computations(self, **params):
+        domain_keys = set(self._exp_domain.keys())
+        param_keys = set(params.keys())
+        missing_params = domain_keys.difference(param_keys)
+        non_varying = param_keys.difference(domain_keys)
+        if any([str(self._exp_metadata[p]) != params[p] for p in non_varying]):
+            return []
+        for m_values in product(*[self._exp_domain[p] for p in missing_params]):
+            all_params = {**params, **{mp: mv for mp, mv in zip(missing_params, m_values)}}
+            key = cube_key(all_params, *self._index_params)
+            if key not in self._params_to_exp_index:
+                continue
+            exp_index = self._params_to_exp_index[key]
+            yield self._exp_map[exp_index]
+
     def get_metric(self, metric, **params):
         return self._get_metric(metric, **params)
 
@@ -91,7 +106,7 @@ class ExperimentReader(object):
 def get_row_header(mode, **params):
     if mode == "constant":
         return "\\multicolumn{3}{|c|}{$"+"{}".format(float(params["weights_constant"]))+"$}"
-    elif mode == "balance_gt":
+    elif mode.startswith("balance_gt"):
         return "& &"
     elif mode == "pred_entropy":
         return "\\multicolumn{3}{|c|}{$" + "{}".format(float(params["weights_minimum"])) + "$}"
@@ -117,6 +132,7 @@ def get_super_row(current_mode, n_columns):
     name = {
         "constant": "Constant ($C$)",
         "balance_gt": "Balance",
+        "balance_gt_overall": "Balance (overall)",
         "pred_entropy": "Entropy - $w_{\\text{min}}$",
         "pred_consistency": "Consistency - $\\eta, c(y_1, y_2)$",
         "pred_merged": "Merged - $w_{\\text{min}}, \\eta, c(y_1, y_2)$",
