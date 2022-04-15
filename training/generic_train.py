@@ -294,14 +294,14 @@ def main(argv, computation=None):
 
         print("---- Weights strategy ----")
         weights_mode = "constant" if args.weights_mode == "balance_gt_overall" else args.weights_mode
-        weights_on = args.loss == "bce" and (weights_mode != "constant" or args.weights_constant < 0.99)
-        print("-", "mode: '" + args.weights_mode + "' ({})".format("enabled" if weights_on else "disabled"))
-
         weights_constant = args.weights_constant
         if args.weights_mode == "balance_gt_overall":
             _, _, gu_ratio = count_gt_pixels(complete_list, incomplete_list)
             weights_constant = gu_ratio
             results["gu_ratio"] = gu_ratio
+
+        weights_on = args.loss == "bce" and (weights_mode != "constant" or weights_constant < 0.99)
+        print("-", "mode: '" + args.weights_mode + "' ({})".format("enabled" if weights_on else "disabled"))
 
         print("- parameters:")
         if weights_mode == "constant":
