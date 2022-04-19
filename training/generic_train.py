@@ -23,6 +23,7 @@ from torchvision.transforms import transforms
 from augment import get_aug_transforms, get_norm_transform
 from dataset import CropTrainDataset, GraduallyAddMoreDataState, \
     CropWithThresholdedCue, predict_crops_with_cues, predict_set
+from glas import GlaSDatasetGenerator
 from segpc import SegpcDatasetGenerator
 from threshold_optimizer import Thresholdable, thresh_exhaustive_eval
 from monuseg import MonusegDatasetGenerator
@@ -142,6 +143,9 @@ def main(argv, computation=None):
         parser.add_argument("--segpc_rr", dest="segpc_remove_ratio", default=0.0, type=float)
         parser.add_argument("--segpc_ms", dest="segpc_missing_seed", default=42, type=int)
         parser.add_argument("--segpc_nc", dest="segpc_n_complete", default=298, type=int)
+        parser.add_argument("--glas_rr", dest="glas_remove_ratio", default=0.0, type=float)
+        parser.add_argument("--glas_ms", dest="glas_missing_seed", default=42, type=int)
+        parser.add_argument("--glas_nc", dest="glas_n_complete", default=85, type=int)
         parser.add_argument("--lr", dest="lr", default=0.01, type=float)
         parser.add_argument("--init_fmaps", dest="init_fmaps", default=16, type=int)
         parser.add_argument("--save_cues", dest="save_cues", action="store_true")
@@ -247,6 +251,12 @@ def main(argv, computation=None):
                                             remove_ratio=args.segpc_remove_ratio,
                                             n_complete=args.segpc_n_complete,
                                             n_validation=args.n_validation)
+        elif args.dataset == "glas":
+            dataset = GlaSDatasetGenerator(args.data_path, args.tile_size,
+                                           missing_seed=args.glas_missing_seed,
+                                           remove_ratio=args.glas_remove_ratio,
+                                           n_complete=args.glas_n_complete,
+                                           n_validation=args.n_validation)
         else:
             raise ValueError("Unknown dataset '{}'".format(args.dataset))
 
@@ -514,7 +524,7 @@ class TrainComputation(Computation):
             no_groundtruth=False, weights_mode="constant", weights_constant=1.0, weights_consistency_fn="absolute",
             weights_neighbourhood=1, rseed=42, weights_minimum=0.0, dataset="thyroid", monu_rr=0.0, monu_ms=42,
             monu_nc=1, iter_per_epoch=0, distil_target_mode="soft", n_validation=0, segpc_rr=0.0, segpc_ms=42,
-            segpc_nc=298):
+            segpc_nc=298, glas_rr=0.0, glas_ms=42, glas_nc=85):
         # import os
         # os.environ['MKL_THREADING_LAYER'] = 'GNU'
         argv = ["--host", str(self._cytomine_host),
@@ -559,7 +569,10 @@ class TrainComputation(Computation):
                 "--n_validation", str(n_validation),
                 "--segpc_rr", str(segpc_rr),
                 "--segpc_ms", str(segpc_ms),
-                "--segpc_nc", str(segpc_nc)]
+                "--segpc_nc", str(segpc_nc),
+                "--glas_rr", str(glas_rr),
+                "--glas_ms", str(glas_ms),
+                "--glas_nc", str(glas_nc)]
         if save_cues:
             argv.append("--save_cues")
         if no_distillation:

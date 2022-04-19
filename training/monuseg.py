@@ -145,19 +145,20 @@ class MonusegDatasetGenerator(DatasetsGenerator):
 def main(argv):
     with Cytomine.connect_from_cli(argv) as conn:
         np.random.seed(42)
-        # remove_ratios = [0.0, 0.25, 0.5, 0.75, 0.9]
-        n_completes = [1, 2, 3, 4, 5] #, 10, 15]
+        remove_ratios = [0.95, 0.85, 0.8, 0.75, 0.60, 0.5]
+        n_completes = [2] #, 10, 15]
         seeds = np.random.randint(0, 99999999, [10])
         #
-        # for remove_ratio, n_complete, seed in itertools.product(remove_ratios, n_completes, seeds):
-        #     get_monuseg_data("/scratch/users/rmormont/monuseg",
-        #                      remove_ratio=remove_ratio, n_complete=n_complete, seed=seed)
+        for remove_ratio, n_complete, seed in itertools.product(remove_ratios, n_completes, seeds):
+            get_monuseg_data("/scratch/users/rmormont/monuseg",
+                             remove_ratio=remove_ratio, n_complete=n_complete, seed=seed)
+
         # get_monuseg_data("/scratch/users/rmormont/monuseg",
         #                  remove_ratio=0, n_complete=30, seed=42)
-
-        for seed in seeds:
-            for n_complete in n_completes:
-                get_monuseg_data("/scratch/users/rmormont/monuseg", remove_ratio=1.0, n_complete=n_complete, seed=seed)
+        #
+        # for seed in seeds:
+        #     for n_complete in n_completes:
+        #         get_monuseg_data("/scratch/users/rmormont/monuseg", remove_ratio=1.0, n_complete=n_complete, seed=seed)
 
 
 if __name__ == "__main__":
