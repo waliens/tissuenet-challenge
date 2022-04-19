@@ -1,11 +1,10 @@
 import os
 
-from clustertools import set_stdout_logging, ParameterSet, Experiment, ConstrainedParameterSet
+from clustertools import set_stdout_logging, ParameterSet, Experiment
 from clustertools.storage import PickleStorage
 
 from generic_train import TrainComputation
 from train_monuseg_selftrain_clustertools import env_parser, computation_changing_parameters
-
 
 if __name__ == "__main__":
     set_stdout_logging()
@@ -17,7 +16,7 @@ if __name__ == "__main__":
 
     param_set = ParameterSet()
     seeds = [486139387, 497403283, 604080371, 676837418, 703192111, 74695622, 899444528, 900102454, 94829376, 955154649]
-    epochs = 50
+    epochs = 20
     param_set.add_parameters(dataset="glas")
     param_set.add_parameters(glas_ms=seeds)
     param_set.add_parameters(glas_rr=0.9)
@@ -36,7 +35,7 @@ if __name__ == "__main__":
     param_set.add_parameters(aug_hed_coef_range=0.025)
     param_set.add_parameters(aug_blur_sigma_extent=0.1)
     param_set.add_parameters(aug_noise_var_extent=0.05)
-    param_set.add_parameters(sparse_start_after=10)
+    param_set.add_parameters(sparse_start_after=epochs)
     param_set.add_parameters(no_distillation=True)
     param_set.add_parameters(no_groundtruth=False)
     param_set.add_parameters(weights_mode="constant")
@@ -46,7 +45,6 @@ if __name__ == "__main__":
     param_set.add_parameters(weights_neighbourhood=2)
     param_set.add_parameters(distil_target_mode="soft")
 
-    constrained = ConstrainedParameterSet(param_set)
 
     def make_build_fn(**kwargs):
         def build_fn(exp_name, comp_name, context="n/a", storage_factory=PickleStorage):
@@ -55,9 +53,9 @@ if __name__ == "__main__":
         return build_fn
 
     # Wrap it together as an experiment
-    experiment = Experiment("glas-baseline-noself", constrained, make_build_fn(**env_params))
+    experiment = Experiment("glas-baseline-nosparse", param_set, make_build_fn(**env_params))
 
-    computation_changing_parameters(experiment, environment)
+    computation_changing_parameters(experiment, environment, excluded={"glas_ms"})
 
     # Finally run the experiment
     environment.run(experiment)
