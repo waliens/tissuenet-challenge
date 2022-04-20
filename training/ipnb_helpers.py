@@ -56,7 +56,7 @@ def base_parameter_set(param_set):
 def load_indexes(exp_name):
     storage = PickleStorage(exp_name)
     result_folder = os.path.join(storage.folder, "results")
-    return [fname.split(".")[0].rsplit("-")[-1] for fname in os.listdir(result_folder)]
+    return [fname.rsplit(".")[-2].rsplit("-")[-1] for fname in os.listdir(result_folder)]
 
 
 class ExperimentReader(object):
