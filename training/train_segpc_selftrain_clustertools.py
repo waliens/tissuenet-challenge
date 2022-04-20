@@ -92,6 +92,9 @@ if __name__ == "__main__":
     param_set.add_parameters()
     param_set.add_parameters(weights_constant=[1.25, 1.5, 1.75, 2.0])
 
+    param_set.add_parameters()
+    param_set.add_parameters(weights_constant=[5.0, 10.0, 20.0])
+
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(**segpc_constraints)
     constrained.add_constraints(weight_exclude=weight_exclude)
