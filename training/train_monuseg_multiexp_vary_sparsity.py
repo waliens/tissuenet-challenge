@@ -1,11 +1,8 @@
-import itertools
+import logging
 import os
-from collections import defaultdict
 
-from clustertools import set_stdout_logging, ParameterSet, Experiment, CTParser, ConstrainedParameterSet, \
-    PrioritizedParamSet
+from clustertools import set_stdout_logging, ParameterSet, Experiment, ConstrainedParameterSet, PrioritizedParamSet
 from clustertools.storage import PickleStorage
-from cytomine import Cytomine
 
 from generic_train import TrainComputation
 from train_monuseg_selftrain_clustertools import weight_exclude, env_parser
@@ -57,6 +54,10 @@ def make_experiment(env_params, monu_rr, exp_type="self-train"):
         param_set.add_parameters(weights_neighbourhood=2)
         param_set.add_parameters(distil_target_mode="soft")
 
+    if exp_type == "self-train":
+        param_set.add_separator()
+        param_set.add_parameters(weights_constant=0.5)
+
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
 
@@ -75,6 +76,8 @@ def make_experiment(env_params, monu_rr, exp_type="self-train"):
 
 
 if __name__ == "__main__":
+    set_stdout_logging(logging.INFO)
+
     # Define the parameter set: the domain each variable can take
 
     environment, namespace = env_parser().parse()
