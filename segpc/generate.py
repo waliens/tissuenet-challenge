@@ -1,5 +1,6 @@
 import itertools
 import os
+from numpy import random
 import re
 import shutil
 from tempfile import TemporaryDirectory
@@ -10,7 +11,6 @@ from argparse import ArgumentParser
 
 from imageio import imsave
 from joblib import Parallel, delayed
-from numpy.random import RandomState
 from skimage.io import imread
 from skimage.transform import resize, rescale
 
@@ -138,36 +138,13 @@ def main(argv):
     argparse.add_argument("--outdir", "-o", dest="outdir")
     params, _ = argparse.parse_known_args(args=argv)
 
-    # for folder in ["train", "validation"]:
-    #     x_folder = os.path.join(params.dir, folder, "x")
-    #     y_folder = os.path.join(params.dir, folder, "y")
-    #     x_files = {int(x.rsplit(".", 1)[0][-4:]): os.path.join(x_folder, x) for x in os.listdir(x_folder) if x.endswith(".bmp")}
-    #     if not os.path.exists(y_folder):
-    #         continue
-    #     y_files = os.listdir(y_folder)
-    #     y_by_file = defaultdict(list)
-    #
-    #     for index, x_filepath in x_files.items():
-    #         pattern = re.compile(r"^"+str(index)+"_[0-9]+.bmp$")
-    #         y_by_file[index] = [filename for filename in y_files if pattern.match(filename) is not None]
-    #         if len(y_by_file[index]) == 0:
-    #             print("no match for x='{}'".format(x_filepath))
-    #
-    #     print("Set '{}':".format(folder))
-    #     group_by_count = group_by(y_by_file.values(), lambda v: len(v))
-    #     total_annots = 0
-    #     total_images = 0
-    #     for count, entries in sorted(group_by_count.items(), key=lambda v: v[0]):
-    #         print(">", count, len(entries))
-    #         total_annots += count * len(entries)
-    #         total_images += len(entries)
-    #     print("Total :", total_annots, total_images)
+    n_complete = [10, 20, 30, 40, 50, 75, 100, 150, 200]
+    missing_ratio = [1.0, 0.95, 0.85, 0.8, 0.75, 0.60, 0.5, 0.25]
 
-    n_complete = [30, 60]
-    missing_ratio = [0.9, 0.75, 0.5, 0.25]
+    valid_combs = [(nc, rr) for nc, rr in itertools.product(n_complete, missing_ratio) if (nc == 30 ^ (0.89 < rr < 0.91))]
+    print("number of comb == {}".format(len(valid_combs)))
     target_dim = 512
-    n_seed = 10
-    np.random.seed(42)
+    rngs = random.SeedSequence(42).spawn(10)
 
     with TemporaryDirectory() as dirname:
         val_to_copy = os.path.join(dirname, "validation")
@@ -178,18 +155,21 @@ def main(argv):
         # copy_val_set(params.dir, dest_dir=os.path.join(full_folder, "train", "complete"), target_size=target_dim,
         #              folder_name="train")
 
-        def process(nc, mr, seed):
-            print(nc, mr, seed)
-            random_state = RandomState(seed)
-            gen_dir = os.path.join(params.outdir, "{}_{:1.4f}_{}".format(seed, mr, nc))
+        def process(nc, mr, rng_generator=None):
+            if rng_generator is None:
+                seed = 42
+                rng = random.default_rng(seed)
+                ms = seed
+            else:
+                rng = random.default_rng(rng_generator)
+                ms = rng.integers(999999999, size=1)[0]
+            print(nc, mr, ms)
+            gen_dir = os.path.join(params.outdir, "{}_{:1.4f}_{}".format(ms, mr, nc))
             shutil.copytree(val_to_copy, os.path.join(gen_dir, "validation"))
             copy_train_set(params.dir, os.path.join(gen_dir, "train"),
-                           random_state=random_state, n_complete=nc, missing_ratio=mr, target_size=target_dim)
+                           random_state=rng, n_complete=nc, missing_ratio=mr, target_size=target_dim)
 
-        seeds = np.random.choice(999999999, size=10 * len(n_complete) * len(missing_ratio), replace=False)
-        Parallel(n_jobs=4)(delayed(process)(nc, mr, seeds[i * 10 + j])
-                           for i, (nc, mr) in enumerate(itertools.product(n_complete, missing_ratio))
-                           for j in range(10))
+        Parallel(n_jobs=10)(delayed(process)(nc, rr, rngs[j]) for nc, rr in valid_combs for j in range(10))
 
 
 if __name__ == "__main__":
