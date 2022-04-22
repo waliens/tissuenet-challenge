@@ -22,6 +22,9 @@ def get_monuseg_data(data_path, mask_folder="masks", image_folder="images", inco
                      complete_folder="complete", remove_ratio=0.0, seed=42, n_complete=2):
     random_state = check_random_state(seed)
     data_path = os.path.join(data_path, "{}_{:0.4f}_{}".format(seed, remove_ratio, n_complete))
+    if os.path.exists(data_path):
+        return
+    print(data_path)
     train_path = os.path.join(data_path, "train")
     test_path = os.path.join(data_path, "test")
     images = ImageInstanceCollection().fetch_with_filter("project", MONUSEG_PROJECT)
@@ -145,7 +148,7 @@ class MonusegDatasetGenerator(DatasetsGenerator):
 def main(argv):
     with Cytomine.connect_from_cli(argv) as conn:
         np.random.seed(42)
-        remove_ratios = [0.95, 0.85, 0.8, 0.75, 0.60, 0.5]
+        remove_ratios = [0.95, 0.85, 0.8, 0.75, 0.60, 0.5, 0.25, 0.99, 0.975]
         n_completes = [2] #, 10, 15]
         seeds = np.random.randint(0, 99999999, [10])
         #
