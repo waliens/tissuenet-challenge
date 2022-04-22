@@ -85,7 +85,7 @@ if __name__ == "__main__":
     os.makedirs(namespace.save_path, exist_ok=True)
 
     for exp_type in "self-train", "baseline-noself", "baseline-nosparse":
-        for monu_rr in [1.0, 0.95, 0.85, 0.8, 0.75, 0.60, 0.5]:
+        for monu_rr in [1.0, 0.95, 0.85, 0.8, 0.75, 0.60, 0.5, 0.975, 0.99, 0.25]:
             if monu_rr > 0.9999 and exp_type == "baseline-noself":
                 continue
             print("Exp '{}' with monu_rr={}".format(exp_type, monu_rr))
