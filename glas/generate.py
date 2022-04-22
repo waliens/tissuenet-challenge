@@ -38,6 +38,8 @@ def generate_one(train, tmp_test_folder, annotations, rr, nc, outdir, rng_genera
         rng = random.default_rng(rng_generator)
         ms = rng.integers(999999999, size=1)[0]
     folder = os.path.join(outdir, "{}_{:0.4f}_{}".format(ms, rr, nc))
+    if os.path.exists(folder):
+        return
     train_folder = os.path.join(folder, "train")
 
     # complete set
@@ -108,8 +110,8 @@ def main(argv):
         mask = imread(get_mask_path(train_image_path))
         train_annotations[train_image_path] = [polygon for polygon, _ in mask_to_objects_2d(mask)]
 
-    glas_rr = [0.9]
-    glas_nc = [8]
+    glas_rr = [1.0, 0.99, 0.975, 0.95, 0.9, 0.85, 0.8, 0.75, 0.6, 0.5, 0.25]
+    glas_nc = [2, 4, 8, 16, 24, 32, 40, 60]
     rngs = random.SeedSequence(42).spawn(10)
 
     with TemporaryDirectory() as tempdir:
@@ -119,7 +121,11 @@ def main(argv):
         generate_one(train_set, tmp_test_dir, train_annotations, 0.0, 85, params.outdir)
 
         for rr, nc, rng in itertools.product(glas_rr, glas_nc, rngs):
+            if not ((0.89 < rr < 0.91) ^ (nc == 8)):
+                continue
+            print(rr, nc, rng)
             generate_one(train_set, tmp_test_dir, train_annotations, rr, nc, params.outdir, rng_generator=rng)
+
 
 if __name__ == "__main__":
     import sys
