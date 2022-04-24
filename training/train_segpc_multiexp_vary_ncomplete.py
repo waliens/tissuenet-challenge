@@ -41,7 +41,7 @@ def make_experiment(env_params, segpc_nc, exp_type="self-train"):
 
     if exp_type == "self-train":
         param_set.add_parameters(weights_mode="constant")
-        param_set.add_parameters(weights_constant=[0.01, 0.5])
+        param_set.add_parameters(weights_constant=[0.01, 0.5, 2.0])
         param_set.add_parameters(weights_consistency_fn="quadratic")
         param_set.add_parameters(weights_minimum=0.0)
         param_set.add_parameters(weights_neighbourhood=2)
