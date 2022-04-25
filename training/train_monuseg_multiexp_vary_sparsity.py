@@ -9,7 +9,7 @@ from train_monuseg_selftrain_clustertools import weight_exclude, env_parser
 
 
 def make_experiment(env_params, monu_rr, exp_type="self-train"):
-    if exp_type not in {"self-train", "baseline-noself", "baseline-nosparse"}:
+    if exp_type not in {"self-train", "baseline-noself"}:
         raise ValueError("incorrect exp type '{}'".format(exp_type))
 
     exp_name = "monuseg-{}-rr-{:0.4f}".format(exp_type, monu_rr)
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     env_params = dict(namespace._get_kwargs())
     os.makedirs(namespace.save_path, exist_ok=True)
 
-    for exp_type in "self-train", "baseline-noself", "baseline-nosparse":
+    for exp_type in ["self-train", "baseline-noself"]:
         for monu_rr in [1.0, 0.95, 0.85, 0.8, 0.75, 0.60, 0.5, 0.975, 0.99, 0.25]:
             if monu_rr > 0.9999 and exp_type == "baseline-noself":
                 continue
