@@ -139,9 +139,10 @@ def main(argv):
     params, _ = argparse.parse_known_args(args=argv)
 
     n_complete = [10, 20, 30, 40, 50, 75, 100, 150, 200]
-    missing_ratio = [1.0, 0.95, 0.85, 0.8, 0.75, 0.60, 0.5, 0.25]
+    missing_ratio = [1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.60, 0.5, 0.25]
 
-    valid_combs = [(nc, rr) for nc, rr in itertools.product(n_complete, missing_ratio) if (nc == 30 ^ (0.89 < rr < 0.91))]
+    valid_combs = [(nc, rr) for nc, rr in itertools.product(n_complete, missing_ratio) if (0.89 < rr < 0.91) and nc != 30]
+    print(valid_combs)
     print("number of comb == {}".format(len(valid_combs)))
     target_dim = 512
     rngs = random.SeedSequence(42).spawn(10)
@@ -165,6 +166,8 @@ def main(argv):
                 ms = rng.integers(999999999, size=1)[0]
             print(nc, mr, ms)
             gen_dir = os.path.join(params.outdir, "{}_{:1.4f}_{}".format(ms, mr, nc))
+            if os.path.exists(gen_dir):
+                return
             shutil.copytree(val_to_copy, os.path.join(gen_dir, "validation"))
             copy_train_set(params.dir, os.path.join(gen_dir, "train"),
                            random_state=rng, n_complete=nc, missing_ratio=mr, target_size=target_dim)
