@@ -193,3 +193,64 @@ def plot_table(rows, columns, total_train_imgs):
 
     print("\\end{tabular}")
     print("\\end{table*}")
+
+
+class ScoreReader(object):
+    def __init__(self, exp_name, metric, stats, param="rr", **params):
+        self._exp_name = exp_name
+        self._reader = ExperimentReader(exp_name)
+        self._params = params
+        self._metric = metric
+        self._param = param
+        self._stats = stats
+
+    def get_xy(self):
+        computations = list(self._reader.get_computations(**self._params))
+        if len(computations) == 0:
+            return -1, None, None
+            # raise ValueError("no comb {}: {}".format(self._exp_name, self._params))
+        params, results = computations[0]
+        values = self._reader.get_metric(self._metric, **self._params)
+        return params[self._param_name], np.mean(values[:, -1]), np.std(values[:, -1])
+
+    def get_scatter(self, x_stat):
+        computations = list(self._reader.get_computations(**self._params))
+        if len(computations) == 0:
+            return np.array([]), np.array([])
+
+        x, y = list(), list()
+        for params, results in computations:
+            nc = params[self._param_prefix + "nc"]
+            rr = params[self._param_prefix + "rr"]
+            ms = params[self._param_prefix + "ms"]
+            key = "_".join(map(str, [self._dataset, ms, "{:0.4f}".format(float(rr)), nc]))
+            x.append(self._stats[key]["stats"][x_stat])
+            y.append(results[self._metric][-1])
+
+        return np.array(x), np.array(y)
+
+    @property
+    def _param_prefix(self):
+        if "monuseg" in self._exp_name:
+            return "monu_"
+        elif "segpc" in self._exp_name:
+            return "segpc_"
+        elif "glas" in self._exp_name:
+            return "glas_"
+        else:
+            raise ValueError("invalid experiment")
+
+    @property
+    def _dataset(self):
+        if "monuseg" in self._exp_name:
+            return "monuseg"
+        elif "segpc" in self._exp_name:
+            return "segpc"
+        elif "glas" in self._exp_name:
+            return "glas"
+        else:
+            raise ValueError("invalid experiment")
+
+    @property
+    def _param_name(self):
+        return self._param_prefix + self._param
