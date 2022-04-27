@@ -46,6 +46,12 @@ def make_experiment(env_params, monu_rr, exp_type="self-train"):
         param_set.add_parameters(weights_minimum=0.0)
         param_set.add_parameters(weights_neighbourhood=2)
         param_set.add_parameters(distil_target_mode="hard_dice")
+        param_set.add_separator()
+        param_set.add_parameters(weights_constant=0.5)
+        param_set.add_separator()
+        param_set.add_parameters(weights_constant=1.0)
+        param_set.add_parameters(weights_mode="pred_entropy")
+        param_set.add_parameters(weights_minimum=0.1)
     else:
         param_set.add_parameters(weights_mode="constant")
         param_set.add_parameters(weights_constant=1.0)
@@ -53,10 +59,6 @@ def make_experiment(env_params, monu_rr, exp_type="self-train"):
         param_set.add_parameters(weights_minimum=0.0)
         param_set.add_parameters(weights_neighbourhood=2)
         param_set.add_parameters(distil_target_mode="soft")
-
-    if exp_type == "self-train":
-        param_set.add_separator()
-        param_set.add_parameters(weights_constant=0.5)
 
     constrained = ConstrainedParameterSet(param_set)
     constrained.add_constraints(weight_exclude=weight_exclude)
