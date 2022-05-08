@@ -140,13 +140,3 @@ class TuneThresholdComputation(Computation):
                 result["test{}_hard_dice".format(nb_cal)] = test_dice
 
                 #progress(self, prgs_prct_end, 1.0, i, len(nbs))
-
-
-if __name__ == "__main__":
-    computation = TuneThresholdComputation("exp", "1", host="https://research.cytomine.be",
-                                           private_key="50a5afb0-b4b2-494c-8c15-76c06abc7d8a",
-                                           public_key="a7da7601-41ee-455c-9ad2-79262276d948",
-                                           n_jobs=1, device="cpu", data_path="/scratch/users/rmormont/monuseg",
-                                           model_path="/home/rmormont/models/monuseg-unet/varying")
-    results = dict()
-    computation.run(results, "1,2,3", train_exp="monuseg-baseline-noself-nc-5", comp_index=0)
