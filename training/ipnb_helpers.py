@@ -1,4 +1,5 @@
 import os
+from abc import abstractmethod, abstractproperty
 from collections import defaultdict
 from itertools import product
 
@@ -59,11 +60,32 @@ def load_indexes(exp_name):
     return [fname.rsplit(".")[-2].rsplit("-")[-1] for fname in os.listdir(result_folder)]
 
 
-class ExperimentReader(object):
+class BaseExperimentReader(object):
+
+    @abstractmethod
+    def get_metric(self, metric, **params):
+        pass
+
+    @abstractmethod
+    def get_computations(self, **params):
+        pass
+
+    @abstractmethod
+    @property
+    def exp_name(self):
+        pass
+
+
+class ExperimentReader(BaseExperimentReader):
     def __init__(self, exp_name):
         exp_indexes = load_indexes(exp_name)
+        self._exp_name = exp_name
         self._exp_map = {idx: load_computation(exp_name, int(idx)) for idx in exp_indexes}
         self._index_params, (self._exp_domain, self._exp_metadata), self._params_to_exp_index = create_comp_index(self._exp_map)
+
+    @property
+    def exp_name(self):
+        return self._exp_name
 
     def _get_metric(self, metric, **params):
         domain_keys = set(self._exp_domain.keys())
@@ -97,10 +119,44 @@ class ExperimentReader(object):
             if key not in self._params_to_exp_index:
                 continue
             exp_index = self._params_to_exp_index[key]
-            yield self._exp_map[exp_index]
+            yield exp_index, self._exp_map[exp_index]
 
     def get_metric(self, metric, **params):
         return self._get_metric(metric, **params)
+
+
+class FollowUpExperimentReader(BaseExperimentReader):
+    def __init__(self, base_experiment, suffix):
+        self._base_experiment = base_experiment
+        self._suffix = suffix
+        self._follow_up = ExperimentReader(self.exp_name)
+
+    def get_metric(self, metric, **params):
+        parent_metric = self._base_experiment.get_metric(metric, **params)
+        if parent_metric is not None:
+            return parent_metric
+        values = list()
+        metric_key = self._suffix + metric
+        for idx, (params, results) in self.get_computations(**params):
+            if metric_key not in results:
+                continue
+            values.append(results[metric_key])
+        if len(values) == 0:
+            return None
+        return np.array(values)
+
+    def get_computations(self, **params):
+        for idx, (params, metrics) in self.get_computations(**params):
+            fu_comps = list(self._follow_up.get_computations(
+                comp_index=idx,
+                train_exp=self._base_experiment.exp_name))
+            if len(fu_comps) != 1:
+                raise ValueError("unexpected number of follow up computations: {}".format(len(fu_comps)))
+            _, (_, fu_metrics) = fu_comps[0]
+            yield idx, (params, {**metrics, **{(self._suffix + k): v for k, v in fu_metrics.items()}})
+
+    def exp_name(self):
+        return self._base_experiment.exp_name + self._suffix
 
 
 def get_row_header(mode, **params):
@@ -198,25 +254,29 @@ def plot_table(rows, columns, total_train_imgs):
 class ScoreReader(object):
     def __init__(self, exp_name, metric, stats, param="rr", **params):
         self._exp_name = exp_name
-        self._reader = ExperimentReader(exp_name)
+        self._base_reader = ExperimentReader(self._exp_name)
+        self._reader = FollowUpExperimentReader(self._base_reader, "-thresh")
         self._params = params
         self._metric = metric
         self._param = param
         self._stats = stats
 
     def get_xy(self):
-        computations = list(self._reader.get_computations(**self._params))
-        if len(computations) == 0:
+        all_results = list(self._reader.get_computations(**self._params))
+        if len(all_results) == 0:
             return -1, None, None
             # raise ValueError("no comb {}: {}".format(self._exp_name, self._params))
+        indexes, computations = zip(*all_results)
         params, results = computations[0]
         values = self._reader.get_metric(self._metric, **self._params)
         return params[self._param_name], np.mean(values[:, -1]), np.std(values[:, -1])
 
     def get_scatter(self, x_stat):
-        computations = list(self._reader.get_computations(**self._params))
-        if len(computations) == 0:
+        all_results = list(self._reader.get_computations(**self._params))
+        if len(all_results) == 0:
             return np.array([]), np.array([])
+            # raise ValueError("no comb {}: {}".format(self._exp_name, self._params))
+        _, computations = zip(*all_results)
 
         x, y = list(), list()
         for params, results in computations:
