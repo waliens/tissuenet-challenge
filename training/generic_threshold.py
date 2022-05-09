@@ -6,14 +6,13 @@ from clustertools.storage import PickleStorage
 
 class TuneThresholdComputation(Computation):
     def __init__(self, exp_name, comp_name, host=None, private_key=None, public_key=None, n_jobs=1, device="cuda:0",
-                 save_path=None, data_path=None, model_path=None, th_step=0.01, context="n/a",
+                 save_path=None, data_path=None, th_step=0.01, context="n/a",
                  storage_factory=PickleStorage, **kwargs):
         super().__init__(exp_name, comp_name, context=context, storage_factory=storage_factory)
         self._n_jobs = n_jobs
         self._device = device
         self._save_path = save_path
         self._cytomine_private_key = private_key
-        self._model_path = model_path
         self._cytomine_public_key = public_key
         self._cytomine_host = host
         self._data_path = data_path
@@ -65,7 +64,7 @@ class TuneThresholdComputation(Computation):
             device = torch.device(device=self._device)
             unet = Unet(comp_params['init_fmaps'], n_classes=1)
             unet.to(device)
-            model_filepath = os.path.join(self._model_path, comp_results['save_path'][-1])
+            model_filepath = os.path.join(self._save_path, comp_results['save_path'][-1])
             if not os.path.exists(model_filepath):
                 raise ValueError("missing model '{}'".format(model_filepath))
             unet.load_state_dict(torch.load(model_filepath, map_location=device))
@@ -139,4 +138,6 @@ class TuneThresholdComputation(Computation):
                 result["test{}_dice_threshold".format(nb_cal)] = test_thresh
                 result["test{}_hard_dice".format(nb_cal)] = test_dice
 
+                print(train_dice, oncal_dice, test_dice)
+                print(train_thresh, cal_thresh, test_thresh)
                 #progress(self, prgs_prct_end, 1.0, i, len(nbs))
