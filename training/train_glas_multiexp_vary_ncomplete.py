@@ -80,7 +80,7 @@ if __name__ == "__main__":
     env_params = dict(namespace._get_kwargs())
     os.makedirs(namespace.save_path, exist_ok=True)
 
-    for exp_type in "self-train", "baseline-noself", "baseline-nosparse":
+    for exp_type in ["self-train", "baseline-noself", "baseline-nosparse"]:
         for glas_nc in [2, 4, 16, 24, 32, 40, 60]:
             print("Exp '{}' with glas_nc={}".format(exp_type, glas_nc))
             experiment = make_experiment(env_params, glas_nc, exp_type=exp_type)
