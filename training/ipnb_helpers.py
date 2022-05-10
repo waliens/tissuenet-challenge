@@ -70,8 +70,8 @@ class BaseExperimentReader(object):
     def get_computations(self, **params):
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def exp_name(self):
         pass
 
@@ -155,6 +155,7 @@ class FollowUpExperimentReader(BaseExperimentReader):
             _, (_, fu_metrics) = fu_comps[0]
             yield idx, (params, {**metrics, **{(self._suffix + k): v for k, v in fu_metrics.items()}})
 
+    @property
     def exp_name(self):
         return self._base_experiment.exp_name + self._suffix
 
