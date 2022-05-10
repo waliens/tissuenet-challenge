@@ -35,35 +35,31 @@ def _find_by_walk(query, dir):
     return None
 
 
-def colorize(gt, pred, border=False):
+def colorize(gt, pred, border=False, fp_color=(255, 0, 0), tp_color=(255, 179, 25), fn_color=(0, 255, 0), alpha_inner=64):
     np_gt = np.asarray(gt)
     np_pred = np.asarray(pred)
     colored = np.zeros([np_gt.shape[0], np_gt.shape[1], 3], dtype=np.uint8)
-    fp_mask = np.logical_and(np_gt > 0, np_gt != np_pred)
-    fn_mask = np.logical_and(np_gt > 0, np_gt == np_pred)
-    tp_mask = np.logical_and(np_gt == 0, np_gt != np_pred)
-    colored[fp_mask, 0] = 255
-    colored[fn_mask, 1] = 255
-    colored[tp_mask, 0] = 255
-    colored[tp_mask, 1] = 179
-    colored[tp_mask, 2] = 25
+    fp_mask = np.logical_and(np_gt == 0, np_gt != np_pred)
+    fn_mask = np.logical_and(np_gt > 0, np_gt != np_pred)
+    tp_mask = np.logical_and(np_gt > 0, np_gt == np_pred)
+    for i, c in enumerate(fp_color):
+        colored[fp_mask, i] = c
+    for i, c in enumerate(fn_color):
+        colored[fn_mask, i] = c
+    for i, c in enumerate(tp_color):
+        colored[tp_mask, i] = c
     if border:
         struct = np.array([[0, 0, 1, 0, 0], [0, 1, 1, 1, 0], [1, 1, 1, 1, 1], [0, 1, 1, 1, 0], [0, 0, 1, 0, 0]], dtype=np.bool)
         er_fp_mask = binary_erosion(fp_mask, struct)
         er_fn_mask = binary_erosion(fn_mask, struct)
         er_tp_mask = binary_erosion(tp_mask, struct)
-        colored[er_fp_mask, 0] = 0
-        colored[er_fn_mask, 1] = 0
-        colored[er_tp_mask, 0] = 0
-        colored[er_tp_mask, 1] = 0
-        colored[er_tp_mask, 2] = 0
         mask = np.zeros(colored.shape[:2] + (1,), dtype=np.uint8)
         mask[fp_mask] = 255
         mask[fn_mask] = 255
         mask[tp_mask] = 255
-        mask[er_fp_mask] = 0
-        mask[er_fn_mask] = 0
-        mask[er_tp_mask] = 0
+        mask[er_fp_mask] = alpha_inner
+        mask[er_fn_mask] = alpha_inner
+        mask[er_tp_mask] = alpha_inner
         return Image.fromarray(np.concatenate([colored, mask], axis=-1))
     else:
         return Image.fromarray(colored)
