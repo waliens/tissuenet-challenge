@@ -1,3 +1,4 @@
+import json
 import os
 from abc import abstractmethod, abstractproperty
 from collections import defaultdict
@@ -101,6 +102,8 @@ class ExperimentReader(BaseExperimentReader):
             if key not in self._params_to_exp_index:
                 continue
             exp_index = self._params_to_exp_index[key]
+            if metric not in self._exp_map[exp_index][1]:
+                continue
             results.append(self._exp_map[exp_index][1][metric])
         if len(results) == 0:
             return None
@@ -146,7 +149,7 @@ class FollowUpExperimentReader(BaseExperimentReader):
         return np.array(values)
 
     def get_computations(self, **params):
-        for idx, (params, metrics) in self.get_computations(**params):
+        for idx, (params, metrics) in self._base_experiment.get_computations(**params):
             fu_comps = list(self._follow_up.get_computations(
                 comp_index=idx,
                 train_exp=self._base_experiment.exp_name))
@@ -270,7 +273,9 @@ class ScoreReader(object):
         indexes, computations = zip(*all_results)
         params, results = computations[0]
         values = self._reader.get_metric(self._metric, **self._params)
-        return params[self._param_name], np.mean(values[:, -1]), np.std(values[:, -1])
+        if np.array(values).ndim > 1:
+            values = np.array(values)[:, -1]
+        return params[self._param_name], np.mean(values), np.std(values)
 
     def get_scatter(self, x_stat):
         all_results = list(self._reader.get_computations(**self._params))
@@ -286,7 +291,15 @@ class ScoreReader(object):
             ms = params[self._param_prefix + "ms"]
             key = "_".join(map(str, [self._dataset, ms, "{:0.4f}".format(float(rr)), nc]))
             x.append(self._stats[key]["stats"][x_stat])
-            y.append(results[self._metric][-1])
+            if self._metric in results:
+                values = results[self._metric]
+            else:
+                values = results[self._reader._suffix + self._metric]
+            if hasattr(values, "__len__"):
+                value = values[-1]
+            else:
+                value = values
+            y.append(value)
 
         return np.array(x), np.array(y)
 
