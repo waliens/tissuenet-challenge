@@ -84,7 +84,7 @@ if __name__ == "__main__":
     env_params = dict(namespace._get_kwargs())
     os.makedirs(namespace.save_path, exist_ok=True)
 
-    for exp_type in "self-train", "baseline-noself", "baseline-nosparse":
+    for exp_type in ["self-train", "baseline-noself", "baseline-nosparse"]:
         for segpc_nc in [10, 20, 40, 50, 75, 100, 150, 200]:
             print("Exp '{}' with segpc_nc={}".format(exp_type, segpc_nc))
             experiment = make_experiment(env_params, segpc_nc, exp_type=exp_type)

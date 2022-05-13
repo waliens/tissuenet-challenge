@@ -84,7 +84,7 @@ if __name__ == "__main__":
     env_params = dict(namespace._get_kwargs())
     os.makedirs(namespace.save_path, exist_ok=True)
 
-    for exp_type in "self-train", "baseline-noself":
+    for exp_type in ["self-train", "baseline-noself"]:
         for segpc_rr in [1.0, 0.95, 0.85, 0.8, 0.75, 0.60, 0.5, 0.25]:
             if segpc_rr > 0.9999 and exp_type == "baseline-noself":
                 continue
