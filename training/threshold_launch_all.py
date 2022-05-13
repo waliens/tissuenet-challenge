@@ -80,8 +80,8 @@ def main(argv):
         for exp, folder in [
             ("baseline-upper-noval", "upper_noval"),
             ("self-train", "selftrain"),
-            ("noself", "noself"),
-            ("nosparse", "nosparse")
+            ("baseline-noself", "noself"),
+            ("baseline-nosparse", "nosparse")
         ]:
             env_params["save_path"] = "/home/rmormont/models/{}-unet/{}".format(dataset, folder)
             exp_name = "{}-{}".format(dataset, exp)
