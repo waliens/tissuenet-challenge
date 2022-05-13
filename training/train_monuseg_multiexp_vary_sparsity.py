@@ -52,6 +52,8 @@ def make_experiment(env_params, monu_rr, exp_type="self-train"):
         param_set.add_parameters(weights_constant=1.0)
         param_set.add_parameters(weights_mode="pred_entropy")
         param_set.add_parameters(weights_minimum=0.1)
+        param_set.add_separator()
+        param_set.add_parameters(weights_mode="pred_consistency")
     else:
         param_set.add_parameters(weights_mode="constant")
         param_set.add_parameters(weights_constant=1.0)
