@@ -53,6 +53,7 @@ class MonusegDatasetCounter(BaseDatasetCounter):
 
         kept_per_image, removed_per_image = defaultdict(lambda: 0), defaultdict(lambda: 0)
 
+        total_in_complete = 0
         for image in self._simages:
             if image.id not in train_ids:
                 continue
@@ -66,6 +67,7 @@ class MonusegDatasetCounter(BaseDatasetCounter):
             else:
                 kept_per_image[image.originalFilename] = len(annot_per_image[image.id])
                 removed_per_image[image.originalFilename] = 0
+                total_in_complete += len(annot_per_image[image.id])
 
         kept = sum(kept_per_image.values())
         removed = sum(removed_per_image.values())
@@ -74,7 +76,8 @@ class MonusegDatasetCounter(BaseDatasetCounter):
             "kept": kept,
             "removed": removed,
             "total": kept + removed,
-            "per_image": {k: (v, removed_per_image[k]) for k, v in kept_per_image.items()}
+            "per_image": {k: (v, removed_per_image[k]) for k, v in kept_per_image.items()},
+            "in_complete": total_in_complete
         }
 
 
@@ -142,17 +145,33 @@ class GlasDatasetCounter(BaseDatasetCounter):
         kept = len(filtered_large)
         total = len(large)
 
+        # count polygons
+        actual_path = os.path.join(os.path.dirname(self._raw_path), "{}_{:1.4f}_{}".format(ms, rr, nc))
+        actual_per_image_stats = dict()
+        total_in_complete = 0
+        for fpath, polygons in self._annotations.items():
+            filtered_polygons = [p for p in polygons if p.area > self._min_area]
+            filename = os.path.basename(fpath)
+            if fpath in complete_set:
+                actual_per_image_stats[filename] = [len(filtered_polygons), 0]
+                total_in_complete += len(filtered_polygons)
+            else:
+                actual_mask_path = os.path.join(actual_path, "train", "incomplete", "masks", filename.replace("_anno", ""))
+                if not os.path.exists(actual_mask_path):
+                    raise ValueError("error '{}".format(actual_mask_path))
+                mask = imread(actual_mask_path)
+                actual_polygons = [polygon for polygon, _ in mask_to_objects_2d(mask) if polygon.area > self._min_area]
+                actual_per_image_stats[filename] = [len(actual_polygons), len(filtered_polygons) - len(actual_polygons)]
+
+        kept += total_in_complete
+        total += total_in_complete
+
         return {
             "kept": kept,
             "removed": total - kept,
             "total": total,
-            # "per_image": {
-            #     os.path.basename(fpath): (
-            #         len(filtered_annotations[fpath]) if fpath in incomplete_set else len([p for p in polygons if p.area > self._min_area]),
-            #         len([p for p in polygons if p.area > self._min_area]) - len(filtered_annotations[fpath]) if fpath in incomplete_set else 0
-            #     )
-            #     for fpath, polygons in self._annotations.items()
-            # }
+            "per_image": actual_per_image_stats,
+            "in_complete": total_in_complete
         }
 
 
@@ -208,11 +227,13 @@ class SegPcDatasetCounter(BaseDatasetCounter):
         kept_per_image = defaultdict(lambda: 0)
         removed_per_image = defaultdict(lambda: 0)
 
+        total_in_complete = 0
         for i, (index, x_filepath, y_files) in enumerate(self._files):
             total = len(y_files)
             x_key = os.path.basename(x_filepath)
             if index in complete_set:
                 kept_per_image[x_key] = total
+                total_in_complete += total
             else:
                 kept_per_image[x_key] = len([file for file in y_files if file not in missing_set])
 
@@ -225,7 +246,8 @@ class SegPcDatasetCounter(BaseDatasetCounter):
             "kept": kept,
             "removed": removed,
             "total": kept + removed,
-            "per_image": {k: (v, removed_per_image[k]) for k, v in kept_per_image.items()}
+            "per_image": {k: (v, removed_per_image[k]) for k, v in kept_per_image.items()},
+            "in_complete": total_in_complete
         }
 
 
