@@ -175,7 +175,7 @@ def main(argv, computation=None):
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-dtm", "--distil_target_mode", dest="distil_target_mode", help="in {'soft', 'hard_dice'}", default="soft")
         parser.add_argument("--n_validation", dest="n_validation", type=int, default=0)
-        parser.add_argument("--max_thresh_tuning_images", dest="max_thresh_tuning_images", type=int, default=100)
+        parser.add_argument("--max_thresh_tuning_images", dest="max_thresh_tuning_images", type=int, default=150)
         parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
 
