@@ -6,8 +6,8 @@ from pathlib import Path
 from pprint import pprint
 import random
 
-import torch
 import numpy as np
+import torch
 
 from clustertools import Computation
 from clustertools.storage import PickleStorage
@@ -25,7 +25,7 @@ from dataset import CropTrainDataset, GraduallyAddMoreDataState, \
     CropWithThresholdedCue, predict_crops_with_cues, predict_set
 from glas import GlaSDatasetGenerator
 from segpc import SegpcDatasetGenerator
-from threshold_optimizer import Thresholdable, thresh_exhaustive_eval
+from threshold_optimizer import Thresholdable, thresh_exhaustive_eval, thresh_linspace_eval
 from monuseg import MonusegDatasetGenerator
 from thyroid import ThyroidDatasetGenerator
 from unet import Unet, DiceWithLogitsLoss, MergedLoss, BCEWithWeights
@@ -100,7 +100,7 @@ def determine_optimal_threshold(calibration_list, model, args, device, worker_in
         all_y_pred = np.hstack([all_y_pred, y_pred.flatten()])
         all_y_true = np.hstack([all_y_true, y_true.flatten()])
     th_opt = Thresholdable(all_y_true, all_y_pred)
-    thresholds, dices = thresh_exhaustive_eval(th_opt, eps=args.th_step)
+    thresholds, dices = thresh_linspace_eval(th_opt, eps=args.th_step)
     best_idx = np.argmax(dices)
     return thresholds[best_idx], dices[best_idx]
 
@@ -175,6 +175,7 @@ def main(argv, computation=None):
                             default=os.path.join(str(Path.home()), "tmp"))
         parser.add_argument("-dtm", "--distil_target_mode", dest="distil_target_mode", help="in {'soft', 'hard_dice'}", default="soft")
         parser.add_argument("--n_validation", dest="n_validation", type=int, default=0)
+        parser.add_argument("--max_thresh_tuning_images", dest="max_thresh_tuning_images", type=int, default=100)
         parser.set_defaults(save_cues=False, no_distillation=False, no_groundtruth=False)
         args, _ = parser.parse_known_args(argv)
 
@@ -377,8 +378,11 @@ def main(argv, computation=None):
 
             # determine optimal threshold (if val set on the val set, otherwise on the complete set)
             has_validation_set = len(validation_list) > 0
+            optimal_thresh_images = validation_list if has_validation_set else complete_list
+            if len(optimal_thresh_images) > args.max_thresh_tuning_images:
+                optimal_thresh_images = np.random.choice(optimal_thresh_images, args.max_thresh_tuning_images, replace=False)
             cal_threshold, cal_hard_dice = determine_optimal_threshold(
-                validation_list if has_validation_set else complete_list,
+                optimal_thresh_images,
                 unet, args, device,
                 worker_init_fn=worker_init,
                 progress_fn=partial(progress, computation,
@@ -413,7 +417,7 @@ def main(argv, computation=None):
                 all_y_true = np.hstack([all_y_true, flat_true])
 
                 test_losses[i] = metrics.log_loss(flat_true, flat_pred, labels=[0, 1])
-                if np.count_nonzero(y_true) == 0:
+                if not np.any(y_true):
                     no_fg_counter += 1
                     test_roc_auc[i] = 0
                 else:

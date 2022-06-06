@@ -114,7 +114,7 @@ class BaseCrop(object):
 
 
 class AnnotationCrop(BaseCrop):
-    def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0, intersecting=None):
+    def __init__(self, wsi, annotation, working_path, tile_size=512, zoom_level=0, n_jobs=0, intersecting=None, include_center_annot=True):
         self._annotation = annotation
         self._tile_size = tile_size
         self._wsi = CytomineSlide(wsi, zoom_level=zoom_level)
@@ -123,6 +123,7 @@ class AnnotationCrop(BaseCrop):
         self._zoom_level = zoom_level
         self._other_annotations = [] if intersecting is None else intersecting
         self._other_polygons = [self._annot2poly(a) for a in self._other_annotations]
+        self._include_center_annot = include_center_annot
 
         # load in memory
         _, width, height = self._extract_image_box()
@@ -267,7 +268,7 @@ class AnnotationCrop(BaseCrop):
 
     def _make_mask(self, window_x, window_y, window_width, window_height):
         (crop_x, crop_y), crop_width, crop_height = self.image_box
-        ground_truth = [self._polygon()] + self._other_polygons
+        ground_truth = ([self._polygon()] if self._include_center_annot else [])  + self._other_polygons
         window = box(0, 0, window_width, window_height)
         fg = [translate(g, xoff=-(window_x + crop_x), yoff=-(window_y + crop_y)).intersection(window)
               for g in ground_truth]
@@ -625,14 +626,13 @@ def predict_set(net, crops, device, in_trans, overlap=0, batch_size=8, n_jobs=1,
         y = torch.sigmoid(net.forward(t))
         detached = y.detach().cpu().numpy()
         for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
-            all_ys[annot_id].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
-
+            all_ys[int(annot_id)].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
     all_preds = list()
     for i, crop in enumerate(crops):
         w, h = crop.width, crop.height
         pred = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
-        for tile_id, (x_off, y_off), y_pred in all_ys[crop.unique_identifier]:
+        for tile_id, (x_off, y_off), y_pred in all_ys[int(crop.unique_identifier)]:
             pred[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
             acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
         pred /= acc

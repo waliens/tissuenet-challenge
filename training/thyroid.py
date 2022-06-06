@@ -153,7 +153,7 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
             zoom_level=zoom_level, intersecting=intersecting[annot.id]) for annot in cell_collec]
         self.val_crops = [AnnotationCrop(
             images[annot.image], annot, download_path, tile_size,
-            zoom_level=zoom_level) for annot in val_rois]
+            zoom_level=zoom_level, intersecting=self.val_rois_to_intersect[annot.id], include_center_annot=False) for annot in val_rois]
 
         for crop in self.pattern_crops + self.base_cell_crops + self.val_crops:
             crop.download()

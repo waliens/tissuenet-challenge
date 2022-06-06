@@ -66,8 +66,6 @@ def linear_search(f: Thresholdable, a, b, step=0.01):
 
 
 def thresh_exhaustive_eval(f: Thresholdable, eps=1e-4):
-    x = list()
-    x.append(0)
     unique_preds = np.unique(f.y_pred)
     thresholds = (unique_preds[1:] + unique_preds[:-1]) / 2
     thresholds = np.hstack(([0], thresholds, [1]))
@@ -78,6 +76,16 @@ def thresh_exhaustive_eval(f: Thresholdable, eps=1e-4):
             continue
         y.append(f.eval(th))
         prev = th
+        x.append(th)
+    return np.array(x), np.array(y)
+
+
+def thresh_linspace_eval(f: Thresholdable, eps=1e-4):
+    n_values = int(1 / eps)
+    grid = np.mgrid[0:n_values+1] / n_values
+    x, y = list(), list()
+    for th in grid[1:]:
+        y.append(f.eval(th))
         x.append(th)
     return np.array(x), np.array(y)
 
