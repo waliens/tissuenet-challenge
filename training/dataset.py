@@ -626,13 +626,13 @@ def predict_set(net, crops, device, in_trans, overlap=0, batch_size=8, n_jobs=1,
         y = torch.sigmoid(net.forward(t))
         detached = y.detach().cpu().numpy()
         for i, (annot_id, tile_id, x_off, y_off) in enumerate(zip(annot_ids, tile_ids, xs, ys)):
-            all_ys[int(annot_id)].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
+            all_ys[str(annot_id)].append((tile_id.item(), (x_off.item(), y_off.item()), detached[i].squeeze()))
     all_preds = list()
     for i, crop in enumerate(crops):
         w, h = crop.width, crop.height
         pred = np.zeros([h, w], dtype=np.float)
         acc = np.zeros([h, w], dtype=np.int)
-        for tile_id, (x_off, y_off), y_pred in all_ys[int(crop.unique_identifier)]:
+        for tile_id, (x_off, y_off), y_pred in all_ys[str(crop.unique_identifier)]:
             pred[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += y_pred
             acc[y_off:(y_off + tile_size), x_off:(x_off + tile_size)] += 1
         pred /= acc
