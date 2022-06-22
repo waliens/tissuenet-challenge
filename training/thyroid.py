@@ -40,6 +40,14 @@ def get_val_set(annots):
     return val_rois, val_foreground
 
 
+def get_test_set(annots):
+    test_rois = annots.filter(lambda a: (a.user in {MTESTOURI_ID} and a.image in TEST_IDS
+                                        and len(a.term) > 0 and a.term[0] in VAL_ROI_TERMS))
+    test_foreground = annots.filter(lambda a: (a.user in {MTESTOURI_ID} and a.image in TEST_IDS
+                                              and len(a.term) > 0 and a.term[0] in VAL_FOREGROUND_TERMS))
+    return test_rois, test_foreground
+
+
 def get_train_annots(annots, terms):
     return annots.filter(lambda a: (a.user in {CDEGAND_ID} and len(a.term) > 0 and a.term[0] in terms and a.image not in VAL_TEST_IDS and a.image not in EXCLUDED_WSIS))
 
@@ -112,11 +120,13 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
         cell_collec = get_cell_train(all_annotations)
         train_collec = pattern_collec + cell_collec
         val_rois, val_foreground = get_val_set(all_annotations)
+        test_rois, test_foreground = get_test_set(all_annotations)
         train_wsi_ids = list({an.image for an in all_annotations}.difference(VAL_TEST_IDS))
         val_wsi_ids = list(VAL_IDS)
+        test_wsi_ids = list(TEST_IDS)
 
         download_path = os.path.join(data_path, "crops-{}".format(tile_size))
-        images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids)}
+        images = {_id: ImageInstance().fetch(_id) for _id in (train_wsi_ids + val_wsi_ids + test_wsi_ids)}
 
         print("find crops intersecting ROIs")
         match_params = {
@@ -142,6 +152,15 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
             for roi in val_rois
         }
         print("done")
+        print("test rois... ", end="", flush=True)
+        self.test_rois_to_intersect = {
+            roi.id: generic_match_search(
+                key_item=wkt.loads(roi.location),
+                elements=[a for a in test_foreground if a.image == roi.image],
+                **match_params)
+            for roi in test_rois
+        }
+        print("done")
 
         self._roi_foregrounds = {**self.val_rois_to_intersect, **intersecting}
 
@@ -154,8 +173,11 @@ class ThyroidDatasetGenerator(DatasetsGenerator):
         self.val_crops = [AnnotationCrop(
             images[annot.image], annot, download_path, tile_size,
             zoom_level=zoom_level, intersecting=self.val_rois_to_intersect[annot.id], include_center_annot=False) for annot in val_rois]
+        self.test_crops = [AnnotationCrop(
+            images[annot.image], annot, download_path, tile_size,
+            zoom_level=zoom_level, intersecting=self.test_rois_to_intersect[annot.id], include_center_annot=False) for annot in test_rois]
 
-        for crop in self.pattern_crops + self.base_cell_crops + self.val_crops:
+        for crop in self.pattern_crops + self.base_cell_crops + self.val_crops + self.test_crops:
             crop.download()
 
     def sets(self):
