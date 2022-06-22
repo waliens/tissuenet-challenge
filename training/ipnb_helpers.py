@@ -185,7 +185,7 @@ def get_row_header(mode, **params):
     elif "type" in params and params["type"] == "bl-nosparse":
         return "\\multicolumn{3}{|c|}{$\\mathcal{D}_l$ only}"
     else:
-        return params["type"] + "& &"
+        return params.get("type", "???") + "& &"
 
 
 def get_super_row(current_mode, n_columns):
