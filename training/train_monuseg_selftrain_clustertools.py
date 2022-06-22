@@ -13,7 +13,7 @@ from generic_train import TrainComputation
 def env_parser():
     parser = CTParser()
     parser.add_argument("--save_path", dest="save_path")
-    parser.add_argument("--data_path", "--data_path", dest="data_path")
+    parser.add_argument("--data_path", dest="data_path")
     parser.add_argument("--device", dest="device", default="cuda:0")
     parser.add_argument("--n_jobs", dest="n_jobs", default=1, type=int)
     parser.add_argument("--th_step", dest="th_step", default=0.01, type=float)
