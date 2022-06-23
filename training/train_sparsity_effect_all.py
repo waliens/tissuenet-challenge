@@ -26,7 +26,7 @@ def make_experiment(env_params, dataset, dataset_key, seeds, nc, rr, exp_type="s
     param_set.add_parameters(batch_size=8)
     param_set.add_parameters(epochs=epochs)
     param_set.add_parameters(overlap=0)
-    param_set.add_parameters(tile_size=512)
+    param_set.add_parameters(tile_size=dataset_params["tile_size"])
     param_set.add_parameters(lr=0.001)
     param_set.add_parameters(init_fmaps=8)
     param_set.add_parameters(zoom_level=0)
@@ -83,15 +83,18 @@ if __name__ == "__main__":
     params = {
         "monuseg": {
             "iter_per_epoch": 100,
-            "epochs": 20
+            "epochs": 20,
+            "tile_size": 512
         },
         "segpc": {
             "iter_per_epoch": 300,
-            "epochs": 30
+            "epochs": 30,
+            "tile_size": 512
         },
         "glas": {
             "iter_per_epoch": 225,
-            "epochs": 20
+            "epochs": 20,
+            "tile_size": 384
         }
     }
 
@@ -121,8 +124,8 @@ if __name__ == "__main__":
         env_params["save_path"] = re.sub(r"(monuseg|segpc|glas|DATASET)", dataset, env_params["save_path"])
         env_params["data_path"] = re.sub(r"(monuseg|segpc|glas|DATASET)", dataset, env_params["data_path"])
         os.makedirs(namespace.save_path, exist_ok=True)
+        sparsity_dict = sparsity_params[dataset]
         for exp_type in ["self-train", "baseline-noself", "baseline-nosparse"]:
-            sparsity_dict = sparsity_params[dataset]
             for rr, nc in itertools.product(sparsity_dict["rr"], sparsity_dict["nc"]):
                 if "nosparse" in exp_type and not 0.49 < rr < 0.51:
                     continue
